@@ -9,7 +9,7 @@ const path = require('path');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
 
-const SUPABASE_DEFAULT_URL = 'postgresql://postgres.xzubrgqwthzrgrhjnzbz:PERUlima22@aws-0-us-east-1.pooler.supabase.com:6543/postgres';
+const SUPABASE_DEFAULT_URL = 'postgresql://postgres.xzubrgqwthzrgrhjnzbz:PERUlima22*@aws-0-us-east-1.pooler.supabase.com:6543/postgres';
 const databaseUrl = process.env.DATABASE_URL || SUPABASE_DEFAULT_URL;
 
 let isPg = false;
