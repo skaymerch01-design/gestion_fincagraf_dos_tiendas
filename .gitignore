@@ -1,0 +1,10 @@
+node_modules/
+client/node_modules/
+client/dist/
+.DS_Store
+*.log
+fincagraf.db
+fincagraf.db-journal
+fincagraf.db-shm
+fincagraf.db-wal
+*.db

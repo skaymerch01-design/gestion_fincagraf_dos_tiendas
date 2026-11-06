@@ -1,0 +1,34 @@
+{
+  "name": "gestion_fincagraf",
+  "version": "1.0.0",
+  "description": "Sistema de gestión interna Fincagraf con módulo para Vendedora y Administrador (6 pestañas)",
+  "main": "server/server.js",
+  "engines": {
+    "node": "20.x"
+  },
+  "scripts": {
+    "start": "node server/server.js",
+    "build": "npm install --include=dev && npm install --prefix client --include=dev && npm run build --prefix client",
+    "dev": "node server/server.js"
+  },
+  "keywords": [
+    "fincagraf",
+    "gestion",
+    "sunat",
+    "contratos",
+    "pwa"
+  ],
+  "author": "Antigravity AI",
+  "license": "ISC",
+  "dependencies": {
+    "archiver": "^8.0.0",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.5",
+    "dotenv": "^17.3.1",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2",
+    "pg": "^8.23.1",
+    "sqlite3": "^5.1.7"
+  }
+}

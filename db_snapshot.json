@@ -1,0 +1,39 @@
+{
+  "updated_at": "2026-11-05T20:00:00.000Z",
+  "users": [
+    {
+      "id": 1,
+      "username": "admin",
+      "password_hash": "$2b$10$aZ7D1BnBndTfDMbYU4gVK.NuSds19WAnEKTHK3aYvUN3ylv6hG6fi",
+      "role": "administrador",
+      "full_name": "Administrador Principal"
+    },
+    {
+      "id": 2,
+      "username": "vendedora1",
+      "password_hash": "$2b$10$ASCzRwTPVt1vOoCaMSd3duY2YjJfHX4T03cq8KII.hwjyIaXp9mRe",
+      "role": "vendedora",
+      "full_name": "Vendedora Tienda 1"
+    },
+    {
+      "id": 3,
+      "username": "vendedora2",
+      "password_hash": "$2b$10$ASCzRwTPVt1vOoCaMSd3duY2YjJfHX4T03cq8KII.hwjyIaXp9mRe",
+      "role": "vendedora",
+      "full_name": "Vendedora Tienda 2"
+    }
+  ],
+  "drive_config": [],
+  "daily_cash_sheets": [],
+  "daily_income_entries": [],
+  "daily_expense_entries": [],
+  "contracts": [],
+  "contract_payments": [],
+  "expenses": [],
+  "admin_weekly_adjustments": [],
+  "payment_schedule": [],
+  "bank_reconciliation": [],
+  "sunat_invoices": [],
+  "staff_loans": [],
+  "staff_loan_payments": []
+}
