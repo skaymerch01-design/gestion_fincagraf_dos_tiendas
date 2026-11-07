@@ -1119,14 +1119,21 @@ export default function EstadoCuentaTab() {
   const weeklyNetBalance = weeklyTotalIngresos - weeklyTotalEgresos;
 
   const weeklyYape = validWeeklyEntries
-    .filter(e => (e.transaction_type || '').toUpperCase() === 'INGRESO' && /yape/i.test(e.bank_name || ''))
+    .filter(e => (e.transaction_type || '').toUpperCase() === 'INGRESO' && /yape|plin/i.test(e.bank_name || ''))
+    .reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
+  const weeklyPos = validWeeklyEntries
+    .filter(e => (e.transaction_type || '').toUpperCase() === 'INGRESO' && /pos|tarjeta|izipay/i.test(e.bank_name || ''))
     .reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
   const weeklyBcp = validWeeklyEntries
-    .filter(e => (e.transaction_type || '').toUpperCase() === 'INGRESO' && /bcp/i.test(e.bank_name || ''))
+    .filter(e => {
+      if ((e.transaction_type || '').toUpperCase() !== 'INGRESO') return false;
+      const bank = (e.bank_name || '').toUpperCase();
+      if (/yape|plin/i.test(bank)) return false;
+      if (/pos|tarjeta|izipay/i.test(bank)) return false;
+      return true; // Cualquier otro ingreso bancario (TRANSFERENCIA, BCP, ABONO, DEPOSITO)
+    })
     .reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
-  const weeklyTransferencias = validWeeklyEntries
-    .filter(e => (e.transaction_type || '').toUpperCase() === 'INGRESO' && !/yape/i.test(e.bank_name || '') && !/bcp/i.test(e.bank_name || ''))
-    .reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
+  const weeklyTransferencias = weeklyBcp;
   const weeklyAnuladosCount = entries.filter(e => parseFloat(e.amount || 0) > 0 && e.status === 'ANULADO').length;
 
   return (
@@ -1321,7 +1328,7 @@ export default function EstadoCuentaTab() {
                 {formatSoles(weeklyTotalIngresos)}
               </div>
               <div style={{ fontSize: '0.68rem', color: '#94a3b8', marginTop: '0.2rem' }}>
-                Yape: <strong style={{ color: '#c084fc' }}>{formatSoles(weeklyYape)}</strong> | BCP: <strong style={{ color: '#38bdf8' }}>{formatSoles(weeklyBcp)}</strong>
+                Yape: <strong style={{ color: '#c084fc' }}>{formatSoles(weeklyYape)}</strong> | BCP: <strong style={{ color: '#38bdf8' }}>{formatSoles(weeklyBcp)}</strong> | POS: <strong style={{ color: '#f59e0b' }}>{formatSoles(weeklyPos)}</strong>
               </div>
             </div>
 
@@ -2445,8 +2452,8 @@ export default function EstadoCuentaTab() {
               })}
             </div>
 
-            {/* Split View GIGANTE: Izquierda 1.3fr (Imagen Grande con Zoom de Rueda + Drag) / Derecha 1fr (Formulario) */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '1.5rem', flex: 1, overflowY: 'auto' }}>
+            {/* Split View GIGANTE: Izquierda 0.85fr (Captura Celular) / Derecha 1.35fr (Formulario y Tabla Amplia) */}
+            <div style={{ display: 'grid', gridTemplateColumns: '0.85fr 1.35fr', gap: '1.25rem', flex: 1, overflowY: 'auto' }}>
               
               {/* LADO IZQUIERDO: VISUALIZADOR GIGANTE DE CAPTURA CON MANITO Y RUEDA DE MOUSE */}
               <div style={{
@@ -3682,36 +3689,6 @@ export default function EstadoCuentaTab() {
             style={{ maxWidth: '92vw', maxHeight: '85vh', objectFit: 'contain', borderRadius: '12px', border: '3px solid #38bdf8', boxShadow: '0 20px 50px rgba(0,0,0,0.9)' }}
           />
         </div>
-      )}
-
-      {/* Botón Flotante para Subir Todo (Scroll to Top) */}
-      {showScrollTop && (
-        <button
-          type="button"
-          onClick={scrollToTop}
-          style={{
-            position: 'fixed',
-            bottom: showSheetDrawer && drawerMinimized ? '75px' : '2.5rem',
-            right: showSheetDrawer && !drawerMinimized ? '515px' : '2.5rem',
-            zIndex: 99999,
-            backgroundColor: '#0284c7',
-            color: '#ffffff',
-            border: '2px solid #38bdf8',
-            borderRadius: '50px',
-            padding: '0.65rem 1.25rem',
-            fontWeight: '900',
-            fontSize: '0.88rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.45rem',
-            boxShadow: '0 8px 25px rgba(2, 132, 199, 0.6)',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-          }}
-          title="Subir al inicio de la página"
-        >
-          <ArrowUp size={18} /> Subir Arriba
-        </button>
       )}
 
       {/* MODAL: Avisar a Vendedora para llenar en Planilla Diaria */}

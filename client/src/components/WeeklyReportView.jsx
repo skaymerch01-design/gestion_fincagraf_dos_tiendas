@@ -118,6 +118,8 @@ export default function WeeklyReportView({ startDate, endDate }) {
       const activeEnd = endDate || (reportData?.week_end) || activeStart;
 
       generateWeeklyDailySheetPDF({
+        startDate: activeStart,
+        endDate: activeEnd,
         periodTitle: `Semana: ${activeStart} al ${activeEnd}`,
         adminName: 'Administrador / Auditor',
         dailyData: reportData,
@@ -144,6 +146,8 @@ export default function WeeklyReportView({ startDate, endDate }) {
         const chosenWeek = availableWeeks[selectedWeekIndex] || availableWeeks[0];
         const res = await safeFetch(`/daily-sheet/weekly-report?startDate=${chosenWeek.startDate}&endDate=${chosenWeek.endDate}`);
         generateWeeklyDailySheetPDF({
+          startDate: chosenWeek.startDate,
+          endDate: chosenWeek.endDate,
           periodTitle: `Semana: ${chosenWeek.startDate} al ${chosenWeek.endDate}`,
           adminName: 'Administrador / Auditor',
           dailyData: res || reportData,

@@ -883,7 +883,25 @@ export function generateWeeklyDailySheetPDF(params) {
   buildWeeklyDailySheetPDF(doc, params);
   applyPageNumbers(doc, 'PLANILLA');
 
-  const cleanFileName = `REPORTE_SEMANAL_PLANILLA_${new Date().toISOString().split('T')[0]}.pdf`;
+  let datePart = '';
+  if (params.startDate && params.endDate) {
+    datePart = `${params.startDate}_AL_${params.endDate}`;
+  } else if (params.periodTitle) {
+    const matches = params.periodTitle.match(/(\d{4}-\d{2}-\d{2}|\d{2}[-/]\d{2}[-/]\d{4})/g);
+    if (matches && matches.length >= 2) {
+      datePart = `${matches[0]}_AL_${matches[1]}`.replace(/\//g, '-');
+    } else if (matches && matches.length === 1) {
+      datePart = matches[0].replace(/\//g, '-');
+    }
+  }
+  if (!datePart && params.dailyData?.week_start && params.dailyData?.week_end) {
+    datePart = `${params.dailyData.week_start}_AL_${params.dailyData.week_end}`;
+  }
+  if (!datePart) {
+    datePart = new Date().toISOString().split('T')[0];
+  }
+
+  const cleanFileName = `REPORTE_SEMANAL_PLANILLA_${datePart}.pdf`;
   doc.save(cleanFileName);
 }
 
@@ -1901,7 +1919,20 @@ export function generateExecutivePDF(params) {
     buildWeeklyExecutivePDF(doc, params);
     applyPageNumbers(doc, 'EJECUTIVO');
 
-    const cleanFileName = `REPORTE_EJECUTIVO_SEMANAL_${new Date().toISOString().split('T')[0]}.pdf`;
+    let datePart = '';
+    if (params.startDate && params.endDate) {
+      datePart = `${params.startDate}_AL_${params.endDate}`;
+    } else if (params.periodTitle) {
+      const matches = params.periodTitle.match(/(\d{4}-\d{2}-\d{2}|\d{2}[-/]\d{2}[-/]\d{4})/g);
+      if (matches && matches.length >= 2) {
+        datePart = `${matches[0]}_AL_${matches[1]}`.replace(/\//g, '-');
+      } else if (matches && matches.length === 1) {
+        datePart = matches[0].replace(/\//g, '-');
+      }
+    }
+    if (!datePart) datePart = new Date().toISOString().split('T')[0];
+
+    const cleanFileName = `REPORTE_EJECUTIVO_SEMANAL_${datePart}.pdf`;
     doc.save(cleanFileName);
     return;
   }
@@ -1919,6 +1950,12 @@ export function generateExecutivePDF(params) {
 
   applyPageNumbers(doc, 'EJECUTIVO');
 
-  const cleanFileName = `REPORTE_EJECUTIVO_${periodType.toUpperCase()}_${new Date().toISOString().split('T')[0]}.pdf`;
+  let periodPart = '';
+  if (params.periodTitle) {
+    periodPart = params.periodTitle.replace(/[^a-zA-Z0-9_-]/g, '_');
+  } else {
+    periodPart = new Date().toISOString().split('T')[0];
+  }
+  const cleanFileName = `REPORTE_EJECUTIVO_${periodType.toUpperCase()}_${periodPart}.pdf`;
   doc.save(cleanFileName);
 }

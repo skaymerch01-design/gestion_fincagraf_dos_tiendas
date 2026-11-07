@@ -1,6 +1,7 @@
 import React, { Component } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Navbar from './components/Navbar';
+import ScrollToTopButton from './components/ScrollToTopButton';
 import Login from './pages/Login';
 import VendedoraDashboard from './pages/VendedoraDashboard';
 import AdminDashboard from './pages/AdminDashboard';
@@ -76,6 +77,7 @@ function AppShell() {
     <div style={{ minHeight: '100vh', backgroundColor: '#0f172a' }}>
       {user && <Navbar />}
       <MainContent />
+      {user && <ScrollToTopButton />}
     </div>
   );
 }
