@@ -4,7 +4,7 @@ types.setTypeParser(1700, (val) => (val === null ? 0 : parseFloat(val)));
 // Parse INT8 / BIGINT (type ID 20) as integer
 types.setTypeParser(20, (val) => (val === null ? 0 : parseInt(val, 10)));
 
-const sqlite3 = require('sqlite3').verbose();
+let sqlite3 = null;
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
@@ -28,6 +28,11 @@ let db = null;
 let dbPath = null;
 
 if (!isPg) {
+  try {
+    sqlite3 = require('sqlite3').verbose();
+  } catch (e) {
+    console.warn('SQLite3 driver not installed (using PostgreSQL cloud database).');
+  }
   let dataDir = process.env.DATA_DIR || null;
   if (!dataDir && process.env.RENDER && fs.existsSync('/var/data')) {
     dataDir = '/var/data';
@@ -42,7 +47,7 @@ if (!isPg) {
     }
   }
 
-  db = new sqlite3.Database(dbPath, (err) => {
+  if (sqlite3) db = new sqlite3.Database(dbPath, (err) => {
     if (err) {
       console.error('Error opening SQLite database:', err.message);
     } else {
