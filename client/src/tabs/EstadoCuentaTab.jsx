@@ -1134,6 +1134,22 @@ export default function EstadoCuentaTab() {
     })
     .reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
   const weeklyTransferencias = weeklyBcp;
+
+  const weeklyEgresoYape = validWeeklyEntries
+    .filter(e => (e.transaction_type || '').toUpperCase() === 'EGRESO' && /yape|plin/i.test(e.bank_name || ''))
+    .reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
+  const weeklyEgresoPos = validWeeklyEntries
+    .filter(e => (e.transaction_type || '').toUpperCase() === 'EGRESO' && /pos|tarjeta|izipay/i.test(e.bank_name || ''))
+    .reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
+  const weeklyEgresoBcp = validWeeklyEntries
+    .filter(e => {
+      if ((e.transaction_type || '').toUpperCase() !== 'EGRESO') return false;
+      const bank = (e.bank_name || '').toUpperCase();
+      if (/yape|plin/i.test(bank)) return false;
+      if (/pos|tarjeta|izipay/i.test(bank)) return false;
+      return true; // Cualquier otro egreso bancario (TRANSFERENCIA, BCP, RETIRO, ITF, GASTOS)
+    })
+    .reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
   const weeklyAnuladosCount = entries.filter(e => parseFloat(e.amount || 0) > 0 && e.status === 'ANULADO').length;
 
   return (
@@ -1348,7 +1364,7 @@ export default function EstadoCuentaTab() {
                 {formatSoles(weeklyTotalEgresos)}
               </div>
               <div style={{ fontSize: '0.68rem', color: '#94a3b8', marginTop: '0.2rem' }}>
-                Comisiones / ITF / Gastos
+                Yape: <strong style={{ color: '#c084fc' }}>{formatSoles(weeklyEgresoYape)}</strong> | BCP: <strong style={{ color: '#38bdf8' }}>{formatSoles(weeklyEgresoBcp)}</strong> | POS: <strong style={{ color: '#f59e0b' }}>{formatSoles(weeklyEgresoPos)}</strong>
               </div>
             </div>
 

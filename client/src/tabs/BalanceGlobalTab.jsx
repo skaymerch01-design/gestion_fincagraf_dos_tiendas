@@ -755,8 +755,11 @@ export default function BalanceGlobalTab({ readOnly = false }) {
     }
   };
 
-  // Summary Totals for List View
+  // Summary Totals for List View (excluye contratos anulados para cuadrar con el resumen gerencial)
   const listTotals = contracts.reduce((acc, curr) => {
+    const isAnulado = curr.payment_status === 'ANULADO' || curr.status === 'ANULADO' || curr.order_status === 'ANULADO';
+    if (isAnulado) return acc;
+
     acc.totalAmount += (curr.total_amount || 0);
     acc.totalPaid += (curr.total_paid || 0);
     acc.balanceDue += (curr.balance_due || 0);
