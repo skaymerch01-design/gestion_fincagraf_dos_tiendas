@@ -38,7 +38,7 @@ const MONTH_NAMES = [
   'JULIO', 'AGOSTO', 'SETIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'
 ];
 
-const YEAR_OPTIONS = [2024, 2025, 2026, 2027, 2028, 2029, 2030];
+const YEAR_OPTIONS = [2026, 2027, 2028, 2029, 2030];
 
 export default function AdminDashboard() {
   const currentDate = new Date();
@@ -156,7 +156,7 @@ export default function AdminDashboard() {
   // PDF Export Modal State
   const [showPdfModal, setShowPdfModal] = useState(false);
   const [pdfPeriodType, setPdfPeriodType] = useState('weekly'); // 'weekly' | 'monthly' | 'annual'
-  const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
+  const [selectedYear, setSelectedYear] = useState(Math.max(2026, currentDate.getFullYear()));
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth()); // 0 to 11
   const [selectedWeekIndex, setSelectedWeekIndex] = useState(0);
   const [exporting, setExporting] = useState(false);

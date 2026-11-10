@@ -52,11 +52,11 @@ const MONTH_NAMES = [
   'JULIO', 'AGOSTO', 'SETIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'
 ];
 
-const YEAR_OPTIONS = [2024, 2025, 2026, 2027, 2028, 2029, 2030];
+const YEAR_OPTIONS = [2026, 2027, 2028, 2029, 2030];
 
 export default function SunatTab() {
   const currentDate = new Date();
-  const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
+  const [selectedYear, setSelectedYear] = useState(Math.max(2026, currentDate.getFullYear()));
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth()); // 0 to 11
   const [activeSubTab, setActiveSubTab] = useState('purchases'); // 'purchases' | 'sales' | 'sunat_payment'
 
@@ -112,7 +112,10 @@ export default function SunatTab() {
     fetchSunatData();
   }, [selectedYear, selectedMonth]);
 
+  const isPastYear = selectedYear < new Date().getFullYear();
+
   const handlePrevMonth = () => {
+    if (selectedYear <= 2026 && selectedMonth === 0) return;
     if (selectedMonth === 0) {
       setSelectedMonth(11);
       setSelectedYear(prev => prev - 1);
@@ -485,6 +488,23 @@ export default function SunatTab() {
       </div>
 
       {/* 2. Sub-tab Navigation Tabs */}
+      {isPastYear && (
+        <div style={{
+          backgroundColor: 'rgba(234, 179, 8, 0.12)',
+          border: '1.5px solid #eab308',
+          borderRadius: '10px',
+          padding: '0.65rem 1.25rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.6rem',
+          color: '#fef08a',
+          fontSize: '0.85rem',
+          fontWeight: '800'
+        }}>
+          <span style={{ fontSize: '1.2rem' }}>🔒</span>
+          <span>MODO HISTÓRICO SUNAT (AÑO {selectedYear} CERRADO - SOLO CONSULTA)</span>
+        </div>
+      )}
       <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '2px solid #1e293b', paddingBottom: '0.2rem' }}>
         <button
           type="button"
@@ -561,14 +581,16 @@ export default function SunatTab() {
             <h3 style={{ fontSize: '1rem', fontWeight: '900', color: '#f87171', margin: 0 }}>
               🛒 Registro de Facturas de COMPRAS ({MONTH_NAMES[selectedMonth]} {selectedYear})
             </h3>
-            <button
-              type="button"
-              onClick={() => openCreateModal('COMPRA')}
+            {!isPastYear && (
+              <button
+                type="button"
+                onClick={() => openCreateModal('COMPRA')}
               className="btn btn-danger"
               style={{ fontWeight: '900', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
             >
               <Plus size={18} /> + Registrar Factura de Compra
-            </button>
+              </button>
+            )}
           </div>
 
           {/* Table of Purchases */}
@@ -655,14 +677,16 @@ export default function SunatTab() {
             <h3 style={{ fontSize: '1rem', fontWeight: '900', color: '#34d399', margin: 0 }}>
               📈 Registro de Facturas de VENTAS ({MONTH_NAMES[selectedMonth]} {selectedYear})
             </h3>
-            <button
-              type="button"
-              onClick={() => openCreateModal('VENTA')}
+            {!isPastYear && (
+              <button
+                type="button"
+                onClick={() => openCreateModal('VENTA')}
               className="btn btn-success"
               style={{ fontWeight: '900', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
             >
               <Plus size={18} /> + Registrar Factura de Venta
-            </button>
+              </button>
+            )}
           </div>
 
           {/* Table of Sales */}

@@ -504,6 +504,10 @@ exports.lookupContract = async (req, res) => {
     let cleanClientName = initialEntry ? initialEntry.details : (contractRow ? contractRow.client_name : '');
     cleanClientName = cleanClientName.replace(/\s*\((?:CANCELACION|\d+°?\s*ADELANTO|ABONO)[^)]*\)/gi, '').trim();
 
+    const originDate = initialEntry ? initialEntry.date_str : (contractRow ? contractRow.date_str : null);
+    const originYear = originDate ? parseInt(originDate.slice(0, 4)) : null;
+    const isPreviousYear = originYear ? (originYear < new Date().getFullYear()) : false;
+
     return res.json({
       success: true,
       exists: true,
@@ -516,6 +520,9 @@ exports.lookupContract = async (req, res) => {
       payment_count: entries.length,
       initial_entry: initialEntry,
       entries_history: entries,
+      origin_date: originDate,
+      origin_year: originYear,
+      is_previous_year: isPreviousYear
     });
   } catch (err) {
     console.error('Error looking up contract in daily sheet:', err);

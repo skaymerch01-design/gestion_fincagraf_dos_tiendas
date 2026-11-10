@@ -434,7 +434,10 @@ export default function PlanillaIngresosEgresos({ readOnly = false, storeId = 1 
         if (res.status === 'ACTIVO') {
           // Auto-fill client name, total, and balance due for final cancellation payment or next advance!
           const pCount = (res.entries_history || []).length;
-          const abonoLabel = pCount === 1 ? 'CANCELACION' : (pCount > 1 ? `${pCount + 1}° ADELANTO` : '1° ADELANTO');
+          let abonoLabel = pCount === 1 ? 'CANCELACION' : (pCount > 1 ? `${pCount + 1}° ADELANTO` : '1° ADELANTO');
+          if (res.is_previous_year && res.origin_year) {
+            abonoLabel = `COPIA - SALDO ${res.origin_year}`;
+          }
           setIncDetails(res.client_name ? `${res.client_name} (${abonoLabel})` : `CONTRATO ${val.trim()} (${abonoLabel})`);
           setIncTotal(String(res.total_amount));
           setIncAmount(String(res.balance_due));
@@ -1600,7 +1603,7 @@ export default function PlanillaIngresosEgresos({ readOnly = false, storeId = 1 
                                     {row.contract_num}
                                   </div>
                                   {isCopia && (
-                                    <div style={{ marginTop: '0.2rem' }}>
+                                    <div style={{ marginTop: '0.2rem', display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'center' }}>
                                       <span
                                         title="Copia / Cancelación de contrato anterior"
                                         style={{
@@ -1619,6 +1622,23 @@ export default function PlanillaIngresosEgresos({ readOnly = false, storeId = 1 
                                       >
                                         COPIA
                                       </span>
+                                      {row.details && (/\b(?:2026|2027|2028|AÑO\s*ANTERIOR)\b/i.test(row.details)) && (
+                                        <span
+                                          style={{
+                                            display: 'inline-block',
+                                            fontSize: '0.55rem',
+                                            fontWeight: '800',
+                                            padding: '0.05rem 0.25rem',
+                                            borderRadius: '2px',
+                                            backgroundColor: '#ca8a04',
+                                            color: '#ffffff',
+                                            letterSpacing: '0.3px',
+                                            textTransform: 'uppercase'
+                                          }}
+                                        >
+                                          SALDO AÑO ANTERIOR
+                                        </span>
+                                      )}
                                     </div>
                                   )}
                                 </td>

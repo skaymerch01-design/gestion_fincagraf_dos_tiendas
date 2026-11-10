@@ -23,6 +23,7 @@ import {
   UserCheck,
   Trash2,
   RotateCcw,
+  Eye,
   Ban
 } from 'lucide-react';
 
@@ -31,7 +32,7 @@ const MONTH_NAMES = [
   'JULIO', 'AGOSTO', 'SETIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'
 ];
 
-const YEAR_OPTIONS = [2024, 2025, 2026, 2027, 2028, 2029, 2030];
+const YEAR_OPTIONS = [2026, 2027, 2028, 2029, 2030];
 
 function formatToYMD(dateVal) {
   if (!dateVal) return '';
@@ -58,7 +59,8 @@ function formatToYMD(dateVal) {
 
 export default function BalanceGlobalTab({ readOnly = false }) {
   const currentDate = new Date();
-  const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
+  const [selectedYear, setSelectedYear] = useState(Math.max(2026, currentDate.getFullYear()));
+  const isPastYear = selectedYear < new Date().getFullYear();
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth()); // 0 to 11
   const [activeSubTab, setActiveSubTab] = useState('list'); // 'list' | 'monthly_report' | 'annual_report'
 
@@ -337,6 +339,7 @@ export default function BalanceGlobalTab({ readOnly = false }) {
   }, [selectedYear, selectedMonth, activeSubTab, statusFilter]);
 
   const handlePrevMonth = () => {
+    if (selectedYear <= 2026 && selectedMonth === 0) return;
     if (selectedMonth === 0) {
       setSelectedMonth(11);
       setSelectedYear(prev => prev - 1);
@@ -906,7 +909,7 @@ export default function BalanceGlobalTab({ readOnly = false }) {
             <Calendar size={14} color="#34d399" /> Mes Actual
           </button>
 
-          {!readOnly && (
+          {!readOnly && !isPastYear && (
             <button
               type="button"
               onClick={openCreateModal}
@@ -1484,10 +1487,66 @@ export default function BalanceGlobalTab({ readOnly = false }) {
                             {row.observations || (isAnulado ? '🚫 Contrato Anulado' : '- Sin observaciones -')}
                           </td>
 
-                          {/* 16. ACCIONES: EDITAR, CANCELADO, BORRAR */}
+                          {/* 16. ACCIONES: EDITAR, CANCELADO, BORRAR (O MODO HISTÓRICO) */}
                           {!readOnly && (
                             <td style={{ textAlign: 'center', whiteSpace: 'nowrap', padding: '0.35rem 0.5rem' }}>
-                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                              {isPastYear ? (
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                                  {!isAnulado && !isFullyPaid ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => openEditModal(row)}
+                                        className="btn btn-warning btn-sm"
+                                        style={{
+                                          padding: '0.25rem 0.55rem',
+                                          backgroundColor: 'rgba(234, 179, 8, 0.2)',
+                                          borderColor: '#eab308',
+                                          color: '#fef08a',
+                                          fontWeight: '800',
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '0.25rem',
+                                          fontSize: '0.72rem'
+                                        }}
+                                        title="Cobrar saldo pendiente de contrato anterior"
+                                      >
+                                        <CreditCard size={13} color="#fef08a" /> Cobrar Saldo
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleLiquidateContract(row)}
+                                        className="btn btn-secondary btn-sm"
+                                        style={{
+                                          padding: '0.25rem 0.45rem',
+                                          backgroundColor: '#1e293b',
+                                          borderColor: '#10b981',
+                                          color: '#10b981'
+                                        }}
+                                        title="Liquidar / Marcar como CANCELADO"
+                                      >
+                                        <CheckCircle2 size={14} color="#10b981" />
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => openEditModal(row)}
+                                        className="btn btn-secondary btn-sm"
+                                        style={{ padding: '0.25rem 0.45rem', backgroundColor: '#1e293b', borderColor: '#64748b', color: '#94a3b8' }}
+                                        title="Ver detalles del contrato (Solo Lectura)"
+                                      >
+                                        <Eye size={13} color="#94a3b8" /> Ver
+                                      </button>
+                                      <span style={{ fontSize: '0.68rem', color: '#64748b', fontStyle: 'italic' }}>
+                                        🔒 Cerrado
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
+                              ) : (
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
                                 {/* Botón Editar */}
                                 <button
                                   type="button"
@@ -1561,6 +1620,7 @@ export default function BalanceGlobalTab({ readOnly = false }) {
                                   <Trash2 size={14} color="#ef4444" />
                                 </button>
                               </div>
+                              )}
                             </td>
                           )}
                         </tr>
@@ -1905,7 +1965,27 @@ export default function BalanceGlobalTab({ readOnly = false }) {
               </button>
             </div>
 
+                        {isPastYear && (
+              <div style={{
+                backgroundColor: 'rgba(234, 179, 8, 0.15)',
+                border: '1.5px solid #eab308',
+                borderRadius: '8px',
+                padding: '0.65rem 1rem',
+                marginBottom: '0.5rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.6rem',
+                color: '#fef08a',
+                fontSize: '0.8rem',
+                fontWeight: '700'
+              }}>
+                <span style={{ fontSize: '1.2rem' }}>🔒</span>
+                <span>Contrato de Año Histórico ({selectedYear}). Los datos originales del contrato están protegidos contra modificaciones, pero la cobranza de saldos pendientes y entrega está 100% habilitada.</span>
+              </div>
+            )}
+
             <form onSubmit={handleSaveContract} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <fieldset disabled={isPastYear} style={{ border: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               {/* N° Contrato y Fecha */}
               <div className="grid-2">
                 <div className="form-group">
@@ -2154,6 +2234,8 @@ export default function BalanceGlobalTab({ readOnly = false }) {
                 </div>
               </div>
 
+              </fieldset>
+
               {/* SECCIÓN HISTORIAL Y REGISTRO DE ADELANTOS / ABONOS (Punto 3) */}
               {editingContract && (
                 <div style={{ backgroundColor: '#1e293b', padding: '0.9rem', borderRadius: '8px', border: '1.5px solid #0284c7', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -2210,15 +2292,19 @@ export default function BalanceGlobalTab({ readOnly = false }) {
                                 {p.notes || '-'}
                               </td>
                               <td style={{ padding: '0.45rem 0.65rem', textAlign: 'center' }}>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeletePayment(p.id)}
+                                {!isPastYear ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeletePayment(p.id)}
                                   className="btn btn-secondary btn-sm"
                                   style={{ padding: '0.25rem 0.45rem', border: '1px solid #ef4444', color: '#ef4444', background: 'rgba(239, 68, 68, 0.1)' }}
                                   title="Eliminar este abono"
                                 >
                                   <Trash2 size={13} />
-                                </button>
+                                  </button>
+                                ) : (
+                                  <span style={{ fontSize: "0.7rem", color: "#64748b" }}>🔒</span>
+                                )}
                               </td>
                             </tr>
                           ))}
@@ -2375,11 +2461,13 @@ export default function BalanceGlobalTab({ readOnly = false }) {
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
                 <button type="button" onClick={() => setIsModalOpen(false)} className="btn btn-secondary">
-                  Cancelar
+                  {isPastYear ? 'Cerrar Ventana' : 'Cancelar'}
                 </button>
-                <button type="submit" className="btn btn-success" style={{ fontWeight: '900', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <Save size={16} /> Guardar Fila en Balance Global
-                </button>
+                {!isPastYear && (
+                  <button type="submit" className="btn btn-success" style={{ fontWeight: '900', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <Save size={16} /> Guardar Fila en Balance Global
+                  </button>
+                )}
               </div>
             </form>
           </div>

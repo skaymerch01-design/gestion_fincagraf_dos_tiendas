@@ -83,6 +83,7 @@ exports.downloadDatabaseBackup = async (req, res) => {
       const sunat_invoices = await dbAll(`SELECT * FROM sunat_invoices`);
       const staff_loans = await dbAll(`SELECT * FROM staff_loans`);
       const staff_loan_payments = await dbAll(`SELECT * FROM staff_loan_payments`);
+      const bank_weekly_openings = await dbAll(`SELECT * FROM bank_weekly_openings`);
 
       const backupData = {
         exported_at: new Date().toISOString(),
@@ -99,7 +100,8 @@ exports.downloadDatabaseBackup = async (req, res) => {
         bank_reconciliation,
         sunat_invoices,
         staff_loans,
-        staff_loan_payments
+        staff_loan_payments,
+        bank_weekly_openings
       };
 
       const filename = `fincagraf_backup_${timestamp}.json`;
@@ -388,11 +390,24 @@ exports.restoreDatabaseBackup = async (req, res) => {
           )
         );
 
+        // 13. Bank Weekly Openings
+        await restoreTable(snapshot.bank_weekly_openings, (bwo) =>
+          dbRun(
+            `INSERT INTO bank_weekly_openings (week_start, opening_balance, notes)
+             VALUES (?, ?, ?)
+             ON CONFLICT(week_start) DO UPDATE SET
+               opening_balance = excluded.opening_balance,
+               notes = excluded.notes,
+               updated_at = CURRENT_TIMESTAMP`,
+            [bwo.week_start, bwo.opening_balance || 0, bwo.notes || null]
+          )
+        );
+
         // Reset PostgreSQL ID sequences for all primary keys
         const seqTables = [
           'users', 'daily_cash_sheets', 'daily_income_entries', 'daily_expense_entries',
           'contracts', 'contract_payments', 'expenses', 'payment_schedule',
-          'bank_reconciliation', 'sunat_invoices', 'staff_loans', 'staff_loan_payments'
+          'bank_reconciliation', 'sunat_invoices', 'staff_loans', 'staff_loan_payments', 'bank_weekly_openings'
         ];
         for (const tbl of seqTables) {
           try {

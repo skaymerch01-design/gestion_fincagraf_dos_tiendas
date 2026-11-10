@@ -85,7 +85,15 @@ export default function EstadoCuentaTab() {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [viewMode, setViewMode] = useState('grid'); // 'grid' (2 Columnas) o 'table'
+  const [viewMode, setViewMode] = useState('grid');
+
+  // Bank Weekly Opening State (Saldo Inicial de Banco)
+  const [bankOpening, setBankOpening] = useState(0);
+  const [bankOpeningNotes, setBankOpeningNotes] = useState('');
+  const [showOpeningModal, setShowOpeningModal] = useState(false);
+  const [openingInput, setOpeningInput] = useState('');
+  const [openingNotesInput, setOpeningNotesInput] = useState('');
+  const [savingOpening, setSavingOpening] = useState(false); // 'grid' (2 Columnas) o 'table'
 
   // Batch Upload Modal State
   const [showBatchModal, setShowBatchModal] = useState(false);
@@ -361,9 +369,60 @@ export default function EstadoCuentaTab() {
     }
   };
 
+  const fetchWeeklyOpening = async (targetStartDate = startDate) => {
+    try {
+      const res = await apiFetch(`/bank-reconciliation/opening?weekStart=${targetStartDate}`);
+      if (res && res.success && res.opening) {
+        setBankOpening(parseFloat(res.opening.opening_balance) || 0);
+        setBankOpeningNotes(res.opening.notes || '');
+      } else {
+        setBankOpening(0);
+        setBankOpeningNotes('');
+      }
+    } catch (err) {
+      console.error('Error fetching weekly opening:', err);
+      setBankOpening(0);
+    }
+  };
+
+  const handleSaveOpening = async (e) => {
+    if (e) e.preventDefault();
+    setSavingOpening(true);
+    try {
+      const val = parseFloat(openingInput) || 0;
+      const res = await apiFetch('/bank-reconciliation/opening', {
+        method: 'POST',
+        body: JSON.stringify({
+          week_start: startDate,
+          opening_balance: val,
+          notes: openingNotesInput
+        })
+      });
+      if (res && res.success) {
+        setBankOpening(val);
+        setBankOpeningNotes(openingNotesInput);
+        setShowOpeningModal(false);
+      } else {
+        alert('Error al guardar apertura: ' + (res?.error || 'Desconocido'));
+      }
+    } catch (err) {
+      console.error('Error saving bank opening:', err);
+      alert('Error de conexión al guardar apertura de banco.');
+    } finally {
+      setSavingOpening(false);
+    }
+  };
+
+  const openOpeningModal = () => {
+    setOpeningInput(bankOpening > 0 ? String(bankOpening) : '');
+    setOpeningNotesInput(bankOpeningNotes || '');
+    setShowOpeningModal(true);
+  };
+
   useEffect(() => {
     setEntries([]);
     fetchBankEntries(true);
+    fetchWeeklyOpening(startDate);
   }, [weekOffset]);
 
   // Extract list of unique image URLs for the current week
@@ -1117,6 +1176,7 @@ export default function EstadoCuentaTab() {
     .filter(e => (e.transaction_type || '').toUpperCase() === 'EGRESO')
     .reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
   const weeklyNetBalance = weeklyTotalIngresos - weeklyTotalEgresos;
+  const bankFinalBalance = bankOpening + weeklyTotalIngresos - weeklyTotalEgresos;
 
   const weeklyYape = validWeeklyEntries
     .filter(e => (e.transaction_type || '').toUpperCase() === 'INGRESO' && /yape|plin/i.test(e.bank_name || ''))
@@ -1328,7 +1388,46 @@ export default function EstadoCuentaTab() {
 
           {/* Tarjetas de Totales */}
           <div style={{ display: 'flex', gap: '0.85rem', flexWrap: 'wrap', alignItems: 'center' }}>
-            {/* TOTAL INGRESOS */}
+            {/* 1. APERTURA BANCO */}
+            <div style={{
+              backgroundColor: 'rgba(99, 102, 241, 0.12)',
+              border: '1.5px solid #6366f1',
+              borderRadius: '10px',
+              padding: '0.55rem 0.9rem',
+              textAlign: 'right',
+              minWidth: '150px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.4rem' }}>
+                <span style={{ fontSize: '0.72rem', color: '#c7d2fe', fontWeight: '800', textTransform: 'uppercase' }}>
+                  🏦 Apertura Banco
+                </span>
+                <button
+                  type="button"
+                  onClick={openOpeningModal}
+                  style={{
+                    border: 'none',
+                    backgroundColor: 'rgba(99, 102, 241, 0.25)',
+                    color: '#a5b4fc',
+                    cursor: 'pointer',
+                    fontSize: '0.68rem',
+                    padding: '0.1rem 0.35rem',
+                    borderRadius: '4px',
+                    fontWeight: '800'
+                  }}
+                  title="Editar o definir saldo inicial en banco"
+                >
+                  ✏️ Apertura
+                </button>
+              </div>
+              <div style={{ fontSize: '1.25rem', fontWeight: '900', color: '#a5b4fc', lineHeight: '1.2' }}>
+                {formatSoles(bankOpening)}
+              </div>
+              <div style={{ fontSize: '0.68rem', color: '#94a3b8', marginTop: '0.2rem' }}>
+                {bankOpeningNotes ? bankOpeningNotes : 'Saldo inicial de la semana'}
+              </div>
+            </div>
+
+            {/* 2. TOTAL INGRESOS */}
             <div style={{
               backgroundColor: 'rgba(16, 185, 129, 0.12)',
               border: '1.5px solid #10b981',
@@ -1368,23 +1467,23 @@ export default function EstadoCuentaTab() {
               </div>
             </div>
 
-            {/* BALANCE NETO */}
+            {/* 4. SALDO FINAL EN BANCO */}
             <div style={{
               backgroundColor: 'rgba(56, 189, 248, 0.12)',
               border: '1.5px solid #0284c7',
               borderRadius: '10px',
               padding: '0.55rem 0.9rem',
               textAlign: 'right',
-              minWidth: '140px'
+              minWidth: '150px'
             }}>
               <div style={{ fontSize: '0.72rem', color: '#bae6fd', fontWeight: '800', textTransform: 'uppercase' }}>
-                💰 Balance Neto
+                💰 Saldo Final en Banco
               </div>
-              <div style={{ fontSize: '1.25rem', fontWeight: '900', color: weeklyNetBalance >= 0 ? '#38bdf8' : '#ef4444', lineHeight: '1.2' }}>
-                {formatSoles(weeklyNetBalance)}
+              <div style={{ fontSize: '1.25rem', fontWeight: '900', color: bankFinalBalance >= 0 ? '#38bdf8' : '#ef4444', lineHeight: '1.2' }}>
+                {formatSoles(bankFinalBalance)}
               </div>
               <div style={{ fontSize: '0.68rem', color: '#94a3b8', marginTop: '0.2rem' }}>
-                Ingresos - Egresos
+                Apertura + Ingresos - Egresos
               </div>
             </div>
           </div>
@@ -2263,6 +2362,14 @@ export default function EstadoCuentaTab() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap' }}>
+            {/* Apertura Banco */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', backgroundColor: 'rgba(99, 102, 241, 0.15)', border: '1.5px solid #6366f1', padding: '0.3rem 0.75rem', borderRadius: '8px' }}>
+              <span style={{ fontSize: '0.74rem', fontWeight: '900', color: '#c7d2fe' }}>APERTURA:</span>
+              <span style={{ fontSize: '1.15rem', fontWeight: '900', color: '#a5b4fc' }}>
+                {formatSoles(bankOpening)}
+              </span>
+            </div>
+
             {/* Ingresos */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', backgroundColor: 'rgba(16, 185, 129, 0.15)', border: '1.5px solid #10b981', padding: '0.3rem 0.75rem', borderRadius: '8px' }}>
               <span style={{ fontSize: '0.74rem', fontWeight: '900', color: '#a7f3d0' }}>INGRESOS:</span>
@@ -2279,13 +2386,86 @@ export default function EstadoCuentaTab() {
               </span>
             </div>
 
-            {/* Balance */}
+            {/* Saldo Final Banco */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', backgroundColor: 'rgba(56, 189, 248, 0.15)', border: '1.5px solid #0284c7', padding: '0.3rem 0.75rem', borderRadius: '8px' }}>
-              <span style={{ fontSize: '0.74rem', fontWeight: '900', color: '#bae6fd' }}>BALANCE:</span>
-              <span style={{ fontSize: '1.15rem', fontWeight: '900', color: weeklyNetBalance >= 0 ? '#38bdf8' : '#ef4444' }}>
-                {formatSoles(weeklyNetBalance)}
+              <span style={{ fontSize: '0.74rem', fontWeight: '900', color: '#bae6fd' }}>SALDO BANCO:</span>
+              <span style={{ fontSize: '1.15rem', fontWeight: '900', color: bankFinalBalance >= 0 ? '#38bdf8' : '#ef4444' }}>
+                {formatSoles(bankFinalBalance)}
               </span>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL APERTURA DE BANCO DE LA SEMANA */}
+      {showOpeningModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.85)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: '1rem'
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: '480px', backgroundColor: '#0f172a', border: '2px solid #6366f1', borderRadius: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+              <h3 style={{ fontSize: '1.15rem', color: '#a5b4fc', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: '900' }}>
+                🏦 Apertura de Banco de la Semana
+              </h3>
+              <button type="button" onClick={() => setShowOpeningModal(false)} className="btn-close-neon" title="Cerrar">
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveOpening} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ backgroundColor: '#1e293b', padding: '0.65rem 0.85rem', borderRadius: '8px', fontSize: '0.82rem', color: '#cbd5e1' }}>
+                📅 <strong>Semana:</strong> {startDate} al {endDate}
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" style={{ fontWeight: '800', color: '#ffffff' }}>
+                  Saldo Inicial en Banco (S/):
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="Ej: 5250.00"
+                  className="form-input"
+                  style={{ fontSize: '1.15rem', fontWeight: '900', color: '#38bdf8', borderColor: '#6366f1' }}
+                  value={openingInput}
+                  onChange={(e) => setOpeningInput(e.target.value)}
+                  autoFocus
+                  required
+                />
+                <span style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '0.25rem' }}>
+                  💡 Ingrese el saldo con el que amaneció la cuenta bancaria BCP al inicio de esta semana.
+                </span>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" style={{ fontWeight: '800', color: '#ffffff' }}>
+                  Notas / Observación (Opcional):
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: Saldo de banca móvil BCP al Lunes 8:00 AM"
+                  className="form-input"
+                  value={openingNotesInput}
+                  onChange={(e) => setOpeningNotesInput(e.target.value)}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+                <button type="button" onClick={() => setShowOpeningModal(false)} className="btn btn-secondary">
+                  Cancelar
+                </button>
+                <button type="submit" disabled={savingOpening} className="btn btn-primary" style={{ fontWeight: '900', backgroundColor: '#6366f1', borderColor: '#6366f1' }}>
+                  {savingOpening ? 'Guardando...' : '💾 Guardar Apertura'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

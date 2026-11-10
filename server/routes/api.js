@@ -172,6 +172,8 @@ router.delete('/payment-schedule/:id', authenticateToken, requireRole('administr
 
 // --- TAB 4: ESTADO DE CUENTA ---
 router.get('/bank-reconciliation', authenticateToken, requireRole('administrador'), bankReconciliationController.getBankEntries);
+router.get('/bank-reconciliation/opening', authenticateToken, requireRole('administrador'), bankReconciliationController.getWeeklyOpening);
+router.post('/bank-reconciliation/opening', authenticateToken, requireRole('administrador'), bankReconciliationController.saveWeeklyOpening);
 router.get('/bank-reconciliation/download-zip', authenticateToken, requireRole('administrador'), bankReconciliationController.downloadWeekImagesZip);
 router.put('/bank-reconciliation/replace-image', authenticateToken, requireRole('administrador'), upload.single('voucher_image'), bankReconciliationController.replaceCaptureImage);
 router.post('/bank-reconciliation/delete-capture', authenticateToken, requireRole('administrador'), bankReconciliationController.deleteCapture);

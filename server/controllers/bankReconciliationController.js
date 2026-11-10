@@ -451,3 +451,28 @@ exports.downloadWeekImagesZip = async (req, res) => {
     }
   }
 };
+async (req, res) => {
+  try {
+    const { weekStart } = req.query;
+    if (!weekStart) {
+      return res.status(400).json({ success: false, error: 'weekStart es requerido' });
+    }
+    const normWeekStart = normalizeIsoDate(weekStart);
+    const row = await dbGet('SELECT * FROM bank_weekly_openings WHERE week_start = ?', [normWeekStart]);
+    return res.json({
+      success: true,
+      opening: row ? {
+        week_start: row.week_start,
+        opening_balance: Number(row.opening_balance || 0),
+        notes: row.notes || ''
+      } : {
+        week_start: normWeekStart,
+        opening_balance: 0,
+        notes: ''
+      }
+    });
+  } catch (err) {
+    console.error('Error fetching weekly opening:', err);
+    return res.status(500).json({ success: false, error: 'Error al obtener apertura de banco.' });
+  }
+}

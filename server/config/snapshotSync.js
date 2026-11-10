@@ -31,6 +31,7 @@ async function exportSnapshot(dbAll) {
     const sunat_invoices = await dbAll(`SELECT * FROM sunat_invoices`);
     const staff_loans = await dbAll(`SELECT * FROM staff_loans`);
     const staff_loan_payments = await dbAll(`SELECT * FROM staff_loan_payments`);
+    const bank_weekly_openings = await dbAll(`SELECT * FROM bank_weekly_openings`);
 
     const snapshot = {
       updated_at: new Date().toISOString(),
@@ -47,7 +48,8 @@ async function exportSnapshot(dbAll) {
       bank_reconciliation,
       sunat_invoices,
       staff_loans,
-      staff_loan_payments
+      staff_loan_payments,
+      bank_weekly_openings
     };
 
     fs.writeFileSync(snapshotPath, JSON.stringify(snapshot, null, 2), 'utf8');
