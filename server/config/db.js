@@ -367,9 +367,9 @@ async function initDatabase() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         resolved_at TIMESTAMP,
         approved_at TIMESTAMP
-      );,
+      );`,
 
-      CREATE TABLE IF NOT EXISTS bank_weekly_openings (
+      `CREATE TABLE IF NOT EXISTS bank_weekly_openings (
         id SERIAL PRIMARY KEY,
         week_start TEXT NOT NULL UNIQUE,
         opening_balance REAL DEFAULT 0,
@@ -580,6 +580,16 @@ async function initDatabase() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       resolved_at DATETIME,
       approved_at DATETIME
+    );
+  `);
+
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS bank_weekly_openings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      week_start TEXT NOT NULL UNIQUE,
+      opening_balance REAL DEFAULT 0,
+      notes TEXT,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
 

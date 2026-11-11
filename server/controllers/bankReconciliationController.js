@@ -451,7 +451,8 @@ exports.downloadWeekImagesZip = async (req, res) => {
     }
   }
 };
-async (req, res) => {
+
+exports.getWeeklyOpening = async (req, res) => {
   try {
     const { weekStart } = req.query;
     if (!weekStart) {
@@ -475,4 +476,36 @@ async (req, res) => {
     console.error('Error fetching weekly opening:', err);
     return res.status(500).json({ success: false, error: 'Error al obtener apertura de banco.' });
   }
-}
+};
+
+exports.saveWeeklyOpening = async (req, res) => {
+  try {
+    const { week_start, opening_balance, notes } = req.body;
+    if (!week_start) {
+      return res.status(400).json({ success: false, error: 'week_start es requerido' });
+    }
+    const normWeekStart = normalizeIsoDate(week_start);
+    const balanceNum = parseFloat(opening_balance) || 0;
+    const existing = await dbGet('SELECT id FROM bank_weekly_openings WHERE week_start = ?', [normWeekStart]);
+    if (existing) {
+      await dbRun(
+        'UPDATE bank_weekly_openings SET opening_balance = ?, notes = ?, updated_at = CURRENT_TIMESTAMP WHERE week_start = ?',
+        [balanceNum, notes || null, normWeekStart]
+      );
+    } else {
+      await dbRun(
+        'INSERT INTO bank_weekly_openings (week_start, opening_balance, notes) VALUES (?, ?, ?)',
+        [normWeekStart, balanceNum, notes || null]
+      );
+    }
+    try { await exportSnapshot(); } catch (_) {}
+    return res.json({
+      success: true,
+      message: 'Apertura de banco guardada correctamente.',
+      opening: { week_start: normWeekStart, opening_balance: balanceNum, notes: notes || '' }
+    });
+  } catch (err) {
+    console.error('Error saving weekly opening:', err);
+    return res.status(500).json({ success: false, error: 'Error al guardar apertura de banco.' });
+  }
+};
