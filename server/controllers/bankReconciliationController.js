@@ -367,7 +367,7 @@ exports.deleteBankEntry = async (req, res) => {
 exports.downloadWeekImagesZip = async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
-    let sql = `SELECT DISTINCT image_url FROM bank_reconciliation WHERE image_url IS NOT NULL AND status != 'ANULADO'`;
+    let sql = `SELECT DISTINCT image_url FROM bank_reconciliation WHERE image_url IS NOT NULL`;
     const params = [];
 
     if (startDate && endDate) {

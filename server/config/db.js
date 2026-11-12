@@ -393,7 +393,8 @@ async function initDatabase() {
       `ALTER TABLE daily_expense_entries ADD COLUMN IF NOT EXISTS store_id INTEGER DEFAULT 1;`,
       `ALTER TABLE contracts ADD COLUMN IF NOT EXISTS store_id INTEGER DEFAULT 1;`,
       `ALTER TABLE bank_reconciliation ADD COLUMN IF NOT EXISTS store_id INTEGER DEFAULT 1;`,
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS store_id INTEGER DEFAULT 1;`
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS store_id INTEGER DEFAULT 1;`,
+      `UPDATE bank_reconciliation SET status = 'VERIFICADO' WHERE status = 'ANULADO';`
     ];
 
     for (const sql of pgMigrations) {

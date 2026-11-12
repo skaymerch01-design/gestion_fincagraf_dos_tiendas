@@ -85,7 +85,7 @@ export default function EstadoCuentaTab() {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [viewMode, setViewMode] = useState('grid');
+  const [viewMode, setViewMode] = useState('grid'); // 'grid' (2 Columnas) o 'table'
 
   // Bank Weekly Opening State (Saldo Inicial de Banco)
   const [bankOpening, setBankOpening] = useState(0);
@@ -93,7 +93,7 @@ export default function EstadoCuentaTab() {
   const [showOpeningModal, setShowOpeningModal] = useState(false);
   const [openingInput, setOpeningInput] = useState('');
   const [openingNotesInput, setOpeningNotesInput] = useState('');
-  const [savingOpening, setSavingOpening] = useState(false); // 'grid' (2 Columnas) o 'table'
+  const [savingOpening, setSavingOpening] = useState(false);
 
   // Batch Upload Modal State
   const [showBatchModal, setShowBatchModal] = useState(false);
@@ -207,7 +207,7 @@ export default function EstadoCuentaTab() {
       amount: numAmount,
       notes: form.notes !== undefined ? (form.notes !== null ? String(form.notes).trim() : '') : (item.notes && !item.notes.startsWith('Captura #') ? item.notes : ''),
       date: form.date || item.date || startDate,
-      status: item.status && item.status !== 'ANULADO' ? item.status : 'PENDIENTE'
+      status: item.status || 'PENDIENTE'
     };
 
     try {
@@ -765,7 +765,7 @@ export default function EstadoCuentaTab() {
     }
 
     const selectedDate = formatDateInput(form.date) || formatDateInput(startDate) || getLocalDateStr();
-    const placeholder = entries.find(e => e.image_url === imgUrl && e.amount <= 0 && e.status !== 'ANULADO');
+    const placeholder = entries.find(e => e.image_url === imgUrl && e.amount <= 0);
     const targetId = placeholder ? placeholder.id : null;
     const tempId = targetId || ('temp-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5));
 
@@ -927,7 +927,7 @@ export default function EstadoCuentaTab() {
     }
 
     const selectedDate = formatDateInput(transactionDate) || formatDateInput(startDate) || getLocalDateStr();
-    const zeroPlaceholder = !editingFillId ? entries.find(e => e.image_url === currentImgUrl && e.amount <= 0 && e.status !== 'ANULADO') : null;
+    const zeroPlaceholder = !editingFillId ? entries.find(e => e.image_url === currentImgUrl && e.amount <= 0) : null;
     const targetId = editingFillId || (zeroPlaceholder ? zeroPlaceholder.id : null);
     const tempId = targetId || ('temp-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5));
 
@@ -1078,24 +1078,8 @@ export default function EstadoCuentaTab() {
     }
   };
 
-  // Alternar estado ANULADO / DEVUELTO (para que no sume en Estado de Cuenta)
-  const handleToggleAnular = async (item) => {
-    try {
-      const isCurrentlyAnulado = item.status === 'ANULADO';
-      const newStatus = isCurrentlyAnulado ? 'PENDIENTE' : 'ANULADO';
-
-      // Actualización optimista inmediata en memoria (sin scroll ni recargas bruscas)
-      setEntries(prev => prev.map(e => e.id === item.id ? { ...e, status: newStatus } : e));
-
-      await apiFetch(`/bank-reconciliation/${item.id}/anular`, {
-        method: 'PUT'
-      });
-    } catch (err) {
-      // Revertir en caso de error
-      setEntries(prev => prev.map(e => e.id === item.id ? { ...e, status: item.status } : e));
-      alert('Error al cambiar estado anulado: ' + err.message);
-    }
-  };
+  // En Estado de Cuenta Bancario Real no se anulan movimientos ya que todo movimiento bancario existe
+  const handleToggleAnular = () => {};
 
   // Descargar todas las capturas de la semana en formato ZIP
   const handleDownloadImagesZip = async () => {
@@ -1167,8 +1151,8 @@ export default function EstadoCuentaTab() {
   const currentImgUrl = uniqueImages[currentImageIndex];
   const currentImageEntries = entries.filter(e => e.image_url === currentImgUrl && e.amount > 0);
 
-  // Totales Globales de la Semana Seleccionada (excluyendo ANULADO / DEVUELTO)
-  const validWeeklyEntries = entries.filter(e => parseFloat(e.amount || 0) > 0 && e.status !== 'ANULADO');
+  // Totales Globales de la Semana Seleccionada (todos los movimientos bancarios reales suman 100%)
+  const validWeeklyEntries = entries.filter(e => parseFloat(e.amount || 0) > 0);
   const weeklyTotalIngresos = validWeeklyEntries
     .filter(e => (e.transaction_type || '').toUpperCase() === 'INGRESO')
     .reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
@@ -1210,7 +1194,6 @@ export default function EstadoCuentaTab() {
       return true; // Cualquier otro egreso bancario (TRANSFERENCIA, BCP, RETIRO, ITF, GASTOS)
     })
     .reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
-  const weeklyAnuladosCount = entries.filter(e => parseFloat(e.amount || 0) > 0 && e.status === 'ANULADO').length;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -1378,11 +1361,6 @@ export default function EstadoCuentaTab() {
               <span style={{ fontSize: '0.74rem', backgroundColor: '#1e293b', color: '#94a3b8', padding: '0.15rem 0.45rem', borderRadius: '4px', fontWeight: '800' }}>
                 📋 {validWeeklyEntries.length} Movimientos Activos
               </span>
-              {weeklyAnuladosCount > 0 && (
-                <span style={{ fontSize: '0.74rem', backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#f87171', border: '1px solid #ef4444', padding: '0.15rem 0.45rem', borderRadius: '4px', fontWeight: '800', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
-                  <Ban size={11} /> {weeklyAnuladosCount} Devuelto / Anulado (No suma)
-                </span>
-              )}
             </div>
           </div>
 
@@ -1447,7 +1425,7 @@ export default function EstadoCuentaTab() {
               </div>
             </div>
 
-            {/* TOTAL EGRESOS */}
+            {/* 3. TOTAL EGRESOS */}
             <div style={{
               backgroundColor: 'rgba(239, 68, 68, 0.12)',
               border: '1.5px solid #ef4444',
@@ -1544,8 +1522,7 @@ export default function EstadoCuentaTab() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             {groupedCaptures.map((capture) => {
               const displayEntries = capture.entries.filter(e => parseFloat(e.amount || 0) > 0);
-              const validEntries = displayEntries.filter(e => e.status !== 'ANULADO');
-              const anuladosCount = displayEntries.filter(e => e.status === 'ANULADO').length;
+              const validEntries = displayEntries;
               const totalIngresos = validEntries
                 .filter(e => (e.transaction_type || '').toUpperCase() === 'INGRESO')
                 .reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
@@ -1600,12 +1577,6 @@ export default function EstadoCuentaTab() {
                       {validEntries.length > 0 && (
                         <span style={{ backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid #0284c7', padding: '0.2rem 0.55rem', borderRadius: '6px', fontSize: '0.78rem', fontWeight: '900' }}>
                           💰 Balance: {formatSoles(netBalance)}
-                        </span>
-                      )}
-
-                      {anuladosCount > 0 && (
-                        <span style={{ backgroundColor: 'rgba(239, 68, 68, 0.25)', color: '#f87171', border: '1px solid #ef4444', padding: '0.2rem 0.55rem', borderRadius: '6px', fontSize: '0.78rem', fontWeight: '900', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                          <Ban size={12} /> {anuladosCount} {anuladosCount === 1 ? 'Devuelto / Anulado' : 'Devueltos / Anulados'}
                         </span>
                       )}
 
@@ -1745,7 +1716,6 @@ export default function EstadoCuentaTab() {
                         </div>
                       ) : (
                         displayEntries.map((item, mIdx) => {
-                          const isAnulado = item.status === 'ANULADO';
                           const isIngreso = (item.transaction_type || '').toUpperCase() === 'INGRESO';
                           const isVerificado = item.status === 'VERIFICADO';
                           const isObservado = item.status === 'OBSERVADO';
@@ -1755,15 +1725,9 @@ export default function EstadoCuentaTab() {
                             <div
                               key={item.id}
                               style={{
-                                backgroundColor: isAnulado
-                                  ? 'rgba(239, 68, 68, 0.12)'
-                                  : (isIngreso ? 'rgba(6, 78, 59, 0.28)' : 'rgba(127, 29, 29, 0.28)'),
-                                border: isAnulado
-                                  ? '1.5px solid rgba(239, 68, 68, 0.45)'
-                                  : (isIngreso ? '1.5px solid rgba(16, 185, 129, 0.45)' : '1.5px solid rgba(239, 68, 68, 0.45)'),
-                                borderLeft: isAnulado
-                                  ? '4px solid #ef4444'
-                                  : (isIngreso ? '4px solid #10b981' : '4px solid #ef4444'),
+                                backgroundColor: isIngreso ? 'rgba(6, 78, 59, 0.28)' : 'rgba(127, 29, 29, 0.28)',
+                                border: isIngreso ? '1.5px solid rgba(16, 185, 129, 0.45)' : '1.5px solid rgba(239, 68, 68, 0.45)',
+                                borderLeft: isIngreso ? '4px solid #10b981' : '4px solid #ef4444',
                                 borderRadius: '8px',
                                 padding: '0.45rem 0.75rem',
                                 display: 'flex',
@@ -1771,8 +1735,7 @@ export default function EstadoCuentaTab() {
                                 justifyContent: 'space-between',
                                 flexWrap: 'wrap',
                                 gap: '0.5rem',
-                                boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
-                                opacity: isAnulado ? 0.78 : 1
+                                boxShadow: '0 2px 6px rgba(0,0,0,0.2)'
                               }}
                             >
                               {/* Datos del Movimiento */}
@@ -1782,7 +1745,7 @@ export default function EstadoCuentaTab() {
                                 </span>
 
                                 <span style={{
-                                  backgroundColor: isAnulado ? '#64748b' : (isIngreso ? '#10b981' : '#ef4444'),
+                                  backgroundColor: isIngreso ? '#10b981' : '#ef4444',
                                   color: '#ffffff',
                                   fontWeight: '900',
                                   fontSize: '0.72rem',
@@ -1799,8 +1762,7 @@ export default function EstadoCuentaTab() {
                                 <span style={{ 
                                   fontSize: '1.05rem', 
                                   fontWeight: '900', 
-                                  color: isAnulado ? '#f87171' : (isIngreso ? '#34d399' : '#f87171'),
-                                  textDecoration: isAnulado ? 'line-through' : 'none'
+                                  color: isIngreso ? '#34d399' : '#f87171'
                                 }}>
                                   {formatSoles(item.amount || 0)}
                                 </span>
@@ -1813,18 +1775,12 @@ export default function EstadoCuentaTab() {
                                   {item.notes && !item.notes.startsWith('Captura #') ? item.notes : '(Sin concepto)'}
                                 </span>
 
-                                {isAnulado && (
-                                  <span style={{ backgroundColor: '#ef4444', color: '#ffffff', border: '1px solid #b91c1c', padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.72rem', fontWeight: '900', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                                    <Ban size={11} /> 🚫 ANULADO / DEVUELTO (No suma)
-                                  </span>
-                                )}
-
-                                {!isAnulado && isVerificado && (
+                                {isVerificado && (
                                   <span style={{ backgroundColor: 'rgba(16, 185, 129, 0.2)', color: '#34d399', border: '1px solid #10b981', padding: '0.12rem 0.45rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: '900' }}>
                                     ✅ Conforme
                                   </span>
                                 )}
-                                {!isAnulado && isObservado && (
+                                {isObservado && (
                                   <span style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#f87171', border: '1px solid #ef4444', padding: '0.12rem 0.45rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: '900' }}>
                                     ⚠️ {item.audit_note ? `Observado: "${item.audit_note}"` : 'Observado'}
                                   </span>
@@ -1844,33 +1800,11 @@ export default function EstadoCuentaTab() {
                                     padding: '0.25rem 0.6rem',
                                     fontSize: '0.75rem',
                                     fontWeight: '900',
-                                    opacity: isAnulado ? 0.4 : 1,
-                                    cursor: isAnulado ? 'not-allowed' : 'pointer'
+                                    cursor: 'pointer'
                                   }}
-                                  disabled={isAnulado}
-                                  title={isAnulado ? 'Movimiento anulado no puede aprobarse' : (isVerificado ? 'Clic para desactivar aprobación' : 'Aprobar este movimiento')}
+                                  title={isVerificado ? 'Clic para desactivar aprobación' : 'Aprobar este movimiento'}
                                 >
                                   {isVerificado ? '✅ Conforme' : 'Aprobar'}
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => handleToggleAnular(item)}
-                                  className="btn btn-sm"
-                                  style={{
-                                    backgroundColor: isAnulado ? '#ef4444' : 'rgba(239, 68, 68, 0.15)',
-                                    color: isAnulado ? '#ffffff' : '#f87171',
-                                    border: isAnulado ? '1.5px solid #dc2626' : '1.5px solid rgba(239, 68, 68, 0.45)',
-                                    padding: '0.25rem 0.55rem',
-                                    fontSize: '0.75rem',
-                                    fontWeight: '900',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '0.25rem'
-                                  }}
-                                  title={isAnulado ? 'Movimiento ANULADO Y DEVUELTO (clic para reactivar)' : 'Marcar como ANULADO Y DEVUELTO (no sumará en Estado de Cuenta)'}
-                                >
-                                  <Ban size={12} /> {isAnulado ? 'Anulado (Reactivar)' : 'Anular / Devuelto'}
                                 </button>
 
                                 <button
@@ -2119,15 +2053,13 @@ export default function EstadoCuentaTab() {
                   </tr>
                 ) : (
                   entries.map((item, idx) => {
-                    const isAnulado = item.status === 'ANULADO';
                     const isObservado = item.status === 'OBSERVADO';
                     const isVerificado = item.status === 'VERIFICADO';
                     const isIngreso = item.transaction_type === 'INGRESO';
-                    const isPendienteLlenado = item.amount <= 0 && !isAnulado;
+                    const isPendienteLlenado = item.amount <= 0;
 
                     let rowStyle = { borderBottom: '1px solid var(--border-color)', transition: 'background-color 0.2s' };
-                    if (isAnulado) rowStyle.backgroundColor = 'rgba(239, 68, 68, 0.18)';
-                    else if (isObservado) rowStyle.backgroundColor = 'rgba(239, 68, 68, 0.25)';
+                    if (isObservado) rowStyle.backgroundColor = 'rgba(239, 68, 68, 0.25)';
                     else if (isVerificado) rowStyle.backgroundColor = 'rgba(16, 185, 129, 0.16)';
                     else if (isPendienteLlenado) rowStyle.backgroundColor = 'rgba(245, 158, 11, 0.15)';
 
@@ -2232,10 +2164,9 @@ export default function EstadoCuentaTab() {
                         {/* Auditoría Badges & Nota */}
                         <td style={{ padding: '0.4rem' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', flexWrap: 'wrap' }}>
-                            {isAnulado && <span className="badge" style={{ backgroundColor: '#ef4444', color: '#fff', fontWeight: '900', fontSize: '0.72rem' }}>🚫 ANULADO / DEVUELTO</span>}
-                            {!isAnulado && isVerificado && <span className="badge" style={{ backgroundColor: '#10b981', color: '#fff', fontWeight: '900', fontSize: '0.72rem' }}>✅ APROBADO</span>}
-                            {!isAnulado && isObservado && <span className="badge" style={{ backgroundColor: '#ef4444', color: '#fff', fontWeight: '900', fontSize: '0.72rem' }}>⚠️ DESCUADRE</span>}
-                            {!isAnulado && isPendienteLlenado && <span className="badge" style={{ backgroundColor: '#f59e0b', color: '#000', fontWeight: '900', fontSize: '0.72rem' }}>⏳ PENDIENTE</span>}
+                            {isVerificado && <span className="badge" style={{ backgroundColor: '#10b981', color: '#fff', fontWeight: '900', fontSize: '0.72rem' }}>✅ APROBADO</span>}
+                            {isObservado && <span className="badge" style={{ backgroundColor: '#ef4444', color: '#fff', fontWeight: '900', fontSize: '0.72rem' }}>⚠️ DESCUADRE</span>}
+                            {isPendienteLlenado && <span className="badge" style={{ backgroundColor: '#f59e0b', color: '#000', fontWeight: '900', fontSize: '0.72rem' }}>⏳ PENDIENTE</span>}
                           </div>
 
                           {item.audit_note && (
@@ -2273,33 +2204,11 @@ export default function EstadoCuentaTab() {
                                 padding: '0.25rem 0.45rem',
                                 fontSize: '0.72rem',
                                 fontWeight: '900',
-                                opacity: isAnulado ? 0.4 : 1,
-                                cursor: isAnulado ? 'not-allowed' : 'pointer'
+                                cursor: 'pointer'
                               }}
-                              disabled={isAnulado}
-                              title={isAnulado ? 'Movimiento anulado no puede aprobarse' : (isVerificado ? 'Clic para DESACTIVAR Aprobación' : 'Aprobar Movimiento como TODO CONFORME')}
+                              title={isVerificado ? 'Clic para DESACTIVAR Aprobación' : 'Aprobar Movimiento como TODO CONFORME'}
                             >
                               <CheckCircle2 size={12} /> {isVerificado ? '✅ Aprobado' : 'Aprobar'}
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => handleToggleAnular(item)}
-                              className="btn btn-sm"
-                              style={{
-                                backgroundColor: isAnulado ? '#ef4444' : 'rgba(239, 68, 68, 0.15)',
-                                color: isAnulado ? '#ffffff' : '#f87171',
-                                border: isAnulado ? '1px solid #dc2626' : '1px solid rgba(239, 68, 68, 0.45)',
-                                padding: '0.25rem 0.45rem',
-                                fontSize: '0.72rem',
-                                fontWeight: '900',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '0.2rem'
-                              }}
-                              title={isAnulado ? 'Movimiento ANULADO Y DEVUELTO (clic para reactivar)' : 'Marcar como ANULADO Y DEVUELTO (no sumará en Estado de Cuenta)'}
-                            >
-                              <Ban size={11} /> {isAnulado ? 'Anulado (Reactivar)' : 'Anular / Devuelto'}
                             </button>
 
                             {!isVerificado && (
@@ -2354,11 +2263,6 @@ export default function EstadoCuentaTab() {
             <span style={{ fontSize: '0.74rem', backgroundColor: '#1e293b', color: '#94a3b8', padding: '0.15rem 0.45rem', borderRadius: '4px', fontWeight: '800' }}>
               📸 {uniqueImages.length} Capturas | 📋 {validWeeklyEntries.length} Movs
             </span>
-            {weeklyAnuladosCount > 0 && (
-              <span style={{ fontSize: '0.74rem', backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#f87171', border: '1px solid #ef4444', padding: '0.15rem 0.45rem', borderRadius: '4px', fontWeight: '800', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
-                <Ban size={11} /> {weeklyAnuladosCount} Devuelto/Anulado (No suma)
-              </span>
-            )}
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap' }}>

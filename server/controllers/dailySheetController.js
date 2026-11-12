@@ -36,7 +36,6 @@ async function calculateDayNetCash(dStr, storeId = 1) {
     [dStr, storeId]
   );
   const dayIncomeEf = incomeRows.reduce((sum, r) => {
-    if (r.status === 'ANULADO') return sum;
     const efPaid = parseFloat(r.efectivo_paid || 0);
     if (efPaid > 0) return sum + efPaid;
     if (r.final_payment_type && r.initial_payment_type) {
@@ -86,7 +85,7 @@ async function recalculateCashChain(referenceDateStr, storeId = 1) {
   const incomeRows = await dbAll(
     `SELECT date_str, amount_paid, payment_type, initial_payment, initial_payment_type, final_payment, final_payment_type, efectivo_paid, status 
      FROM daily_income_entries 
-     WHERE date_str >= ? AND (status IS NULL OR status != 'ANULADO') AND (store_id = ? OR store_id IS NULL)`,
+     WHERE date_str >= ? AND (store_id = ? OR store_id IS NULL)`,
     [SYSTEM_APERTURA_DATE, storeId]
   );
 
@@ -265,7 +264,7 @@ exports.getDailySheet = async (req, res) => {
 
     const processedIncome = rawIncome.map((row) => {
       const isAnulado = row.status === 'ANULADO';
-      const paid = isAnulado ? 0 : (row.amount_paid || 0);
+      const paid = row.amount_paid || 0;
       let effectiveTotal = row.total_amount || 0;
       let cumulativePaid = paid;
       let isSecondary = false;
@@ -314,38 +313,36 @@ exports.getDailySheet = async (req, res) => {
       // Breakdown for payment methods (handling initial deposit + final cancellation payment)
       let efectivo = 0, bcp = 0, bbva = 0, pos = 0, yape = 0;
 
-      if (!isAnulado) {
-        if ((row.efectivo_paid || 0) > 0 || (row.bcp_paid || 0) > 0 || (row.pos_paid || 0) > 0 || (row.yape_paid || 0) > 0) {
-          efectivo = row.efectivo_paid || 0;
-          bcp = row.bcp_paid || 0;
-          bbva = row.bbva_paid || 0;
-          pos = row.pos_paid || 0;
-          yape = row.yape_paid || 0;
-        } else if (row.final_payment_type && row.initial_payment_type) {
-          // Split between initial deposit method and final payment method
-          const initAmt = row.initial_payment || 0;
-          const finAmt = row.final_payment || Math.max(0, paid - initAmt);
+      if ((row.efectivo_paid || 0) > 0 || (row.bcp_paid || 0) > 0 || (row.pos_paid || 0) > 0 || (row.yape_paid || 0) > 0) {
+        efectivo = row.efectivo_paid || 0;
+        bcp = row.bcp_paid || 0;
+        bbva = row.bbva_paid || 0;
+        pos = row.pos_paid || 0;
+        yape = row.yape_paid || 0;
+      } else if (row.final_payment_type && row.initial_payment_type) {
+        // Split between initial deposit method and final payment method
+        const initAmt = row.initial_payment || 0;
+        const finAmt = row.final_payment || Math.max(0, paid - initAmt);
 
-          const addMethod = (pType, amt) => {
-            const t = (pType || '').toUpperCase();
-            if (t === 'EFECTIVO') efectivo += amt;
-            else if (t.includes('BCP')) bcp += amt;
-            else if (t.includes('BBVA')) bbva += amt;
-            else if (t.includes('POS') || t.includes('IZIPAY')) pos += amt;
-            else if (t.includes('YAPE')) yape += amt;
-          };
+        const addMethod = (pType, amt) => {
+          const t = (pType || '').toUpperCase();
+          if (t === 'EFECTIVO') efectivo += amt;
+          else if (t.includes('BCP')) bcp += amt;
+          else if (t.includes('BBVA')) bbva += amt;
+          else if (t.includes('POS') || t.includes('IZIPAY')) pos += amt;
+          else if (t.includes('YAPE')) yape += amt;
+        };
 
-          addMethod(row.initial_payment_type, initAmt);
-          addMethod(row.final_payment_type, finAmt);
-        } else {
-          // Single payment method
-          const pType = (row.payment_type || '').toUpperCase();
-          if (pType === 'EFECTIVO') efectivo = paid;
-          else if (pType.includes('BCP') || pType.includes('DEPOSITO BCP')) bcp = paid;
-          else if (pType.includes('BBVA') || pType.includes('DEPOSITO BBVA')) bbva = paid;
-          else if (pType.includes('POS') || pType.includes('IZIPAY')) pos = paid;
-          else if (pType.includes('YAPE')) yape = paid;
-        }
+        addMethod(row.initial_payment_type, initAmt);
+        addMethod(row.final_payment_type, finAmt);
+      } else {
+        // Single payment method
+        const pType = (row.payment_type || '').toUpperCase();
+        if (pType === 'EFECTIVO') efectivo = paid;
+        else if (pType.includes('BCP') || pType.includes('DEPOSITO BCP')) bcp = paid;
+        else if (pType.includes('BBVA') || pType.includes('DEPOSITO BBVA')) bbva = paid;
+        else if (pType.includes('POS') || pType.includes('IZIPAY')) pos = paid;
+        else if (pType.includes('YAPE')) yape = paid;
       }
 
       // Construct combined payment types display label
@@ -399,7 +396,7 @@ exports.getDailySheet = async (req, res) => {
       };
     });
 
-    // 4. Summaries calculation (excluding ANULADO)
+    // 4. Summaries calculation (ingresos cobrados suman al 100% para cuadre con banco y caja)
     const incomeTotals = processedIncome.reduce(
       (acc, item) => {
         acc.efectivo += item.efectivo;
@@ -407,7 +404,7 @@ exports.getDailySheet = async (req, res) => {
         acc.bbva += item.bbva;
         acc.pos += item.pos;
         acc.yape += item.yape;
-        acc.total += item.status === 'ANULADO' ? 0 : item.amount_paid;
+        acc.total += item.amount_paid || 0;
         return acc;
       },
       { efectivo: 0, bcp: 0, bbva: 0, pos: 0, yape: 0, total: 0 }
@@ -1240,17 +1237,17 @@ exports.getWeeklyReport = async (req, res) => {
       const rawStatus = (row.income_status || row.status || '').toUpperCase();
       const contractStatus = (row.contract_status || '').toUpperCase();
 
-      // REGLA 3: Contratos anulados color rojo = NO SUMA
-      const isAnulado = rawStatus === 'ANULADO' || contractStatus === 'ANULADO' || /\bANULADO\b/i.test(row.details || '');
-      if (isAnulado) {
-        return;
-      }
-
-      // Desglose de ingresos de caja y bancos de la semana
+      // Desglose de ingresos de caja y bancos de la semana: SIEMPRE SUMA los cobros reales (el egreso de devolución descuenta)
       if (pType === 'EFECTIVO') breakdown.EFECTIVO.venta += amt;
       else if (pType.includes('BCP')) breakdown.BCP.venta += amt;
       else if (pType.includes('YAPE')) breakdown.YAPE.venta += amt;
       else if (pType.includes('POS') || pType.includes('IZIPAY')) breakdown.POS.venta += amt;
+
+      // REGLA 3: Contratos anulados color rojo = NO SUMA a contratos nuevos ni total ventas de las vendedoras
+      const isAnulado = rawStatus === 'ANULADO' || contractStatus === 'ANULADO' || /\bANULADO\b/i.test(row.details || '');
+      if (isAnulado) {
+        return;
+      }
 
       // Normalizar nombre de vendedora
       let seller = row.vendedor_name || row.contract_vendedor || 'Carla';
@@ -1380,7 +1377,7 @@ exports.getWeeklyReport = async (req, res) => {
          FROM daily_income_entries i
          LEFT JOIN contracts c ON i.contract_num = c.contract_code
          LEFT JOIN users u ON i.registered_by = u.id
-         WHERE i.date_str >= ? AND i.date_str <= ? AND (i.status IS NULL OR i.status != 'ANULADO')
+         WHERE i.date_str >= ? AND i.date_str <= ?
          ORDER BY i.date_str ASC, i.id ASC`,
         [start, end]
       );
@@ -1434,7 +1431,7 @@ exports.getWeeklyReport = async (req, res) => {
         const fallbackRows = await dbAll(
           `SELECT id, date_str, contract_num, details, amount_paid, total_amount, payment_type
            FROM daily_income_entries
-           WHERE date_str >= ? AND date_str <= ? AND (status IS NULL OR status != 'ANULADO')
+           WHERE date_str >= ? AND date_str <= ?
            ORDER BY date_str ASC, id ASC`,
           [start, end]
         );

@@ -480,8 +480,10 @@ export default function PlanillaIngresosEgresos({ readOnly = false, storeId = 1 
   };
 
   // Restringido estrictamente a las 10 categorías solicitadas (Incluye Préstamos Personales)
+  // Categorías oficiales de egresos (incluye Devolución por Contrato Anulado y Préstamos Personales)
   const expenseCategories = [
     'Gasto de Contrato',
+    'Devolución por Contrato Anulado',
     'Pagar a Prestamista',
     'Pago Personal',
     'Pago Alquiler de la Tienda',
@@ -715,12 +717,15 @@ export default function PlanillaIngresosEgresos({ readOnly = false, storeId = 1 
       alert(err.message);
     }
   };
-  const handleToggleAnularIncome = async (id) => {
+  const handleToggleAnularIncome = async (id, row) => {
     if (readOnly) return;
     try {
-      await apiFetch(`/daily-sheet/income/${id}/anular`, { method: 'PUT' });
+      const res = await apiFetch(`/daily-sheet/income/${id}/anular`, { method: 'PUT' });
       setSheetsCache({});
       fetchSheet(true);
+      if (res && res.status === 'ANULADO' && row && row.amount_paid > 0) {
+        alert(`ℹ️ Contrato marcado como ANULADO (Fila en Rojo).\n\nEl monto cobrado de ${formatSoles(row.amount_paid)} se mantiene en los ingresos del día para cuadrar con el banco y caja.\n\nRecuerda registrar en EGRESOS la DEVOLUCIÓN al cliente (${row.payment_type_display || row.payment_type || 'Efectivo/Banco'}) cuando se entregue el dinero para cuadrar caja y banco.`);
+      }
     } catch (err) {
       alert(err.message);
     }
@@ -1820,7 +1825,7 @@ export default function PlanillaIngresosEgresos({ readOnly = false, storeId = 1 
                                         {/* 4. ANULAR */}
                                         <button 
                                           type="button"
-                                          onClick={() => handleToggleAnularIncome(row.id)} 
+                                          onClick={() => handleToggleAnularIncome(row.id, row)} 
                                           className={isAnulado ? 'btn btn-success btn-sm' : 'btn btn-danger btn-sm'} 
                                           style={{ padding: '0.2rem 0.35rem' }} 
                                           title={isAnulado ? 'Reactivar fila' : 'Anular fila'}
