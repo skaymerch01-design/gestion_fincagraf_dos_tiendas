@@ -80,8 +80,8 @@ export default function Navbar() {
                 <div style={{ fontSize: '0.875rem', fontWeight: '800', color: '#ffffff' }}>
                   {user.full_name}
                 </div>
-                <div style={{ fontSize: '0.72rem', color: user.role === 'administrador' ? '#38bdf8' : '#84cc16', textTransform: 'capitalize', fontWeight: '800' }}>
-                  Rol: {user.role}
+                <div style={{ fontSize: '0.72rem', color: user.role === 'administrador' ? '#38bdf8' : (user.store_id === 2 ? '#c084fc' : '#84cc16'), textTransform: 'capitalize', fontWeight: '800' }}>
+                  Rol: {user.role} {user.role !== 'administrador' ? `· 🏬 Tienda ${user.store_id || 1}` : '· Acceso Total'}
                 </div>
               </div>
             </div>

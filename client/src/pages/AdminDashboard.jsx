@@ -20,7 +20,9 @@ import {
   Calculator,
   KeyRound,
   EyeOff,
-  Upload
+  Upload,
+  UserPlus,
+  Trash2
 } from 'lucide-react';
 
 import PlanillaIngresosEgresos from '../components/PlanillaIngresosEgresos';
@@ -64,15 +66,28 @@ export default function AdminDashboard() {
 
   // Users, Name & Password Management Modal State
   const [showUserModal, setShowUserModal] = useState(false);
+  const [userModalTab, setUserModalTab] = useState('edit'); // 'edit' | 'create'
   const [userList, setUserList] = useState([]);
   const [selectedUserId, setSelectedUserId] = useState('');
   const [editFullName, setEditFullName] = useState('');
   const [editUsername, setEditUsername] = useState('');
+  const [editRole, setEditRole] = useState('vendedora');
+  const [editStoreId, setEditStoreId] = useState(1);
   const [newPasswordVal, setNewPasswordVal] = useState('');
   const [confirmPasswordVal, setConfirmPasswordVal] = useState('');
   const [showNewPass, setShowNewPass] = useState(false);
   const [showConfirmPass, setShowConfirmPass] = useState(false);
   const [updatingPass, setUpdatingPass] = useState(false);
+
+  // New User Form State
+  const [createFullName, setCreateFullName] = useState('');
+  const [createUsername, setCreateUsername] = useState('');
+  const [createRole, setCreateRole] = useState('vendedora');
+  const [createStoreId, setCreateStoreId] = useState(2);
+  const [createPassword, setCreatePassword] = useState('');
+  const [createConfirmPass, setCreateConfirmPass] = useState('');
+  const [showCreatePass, setShowCreatePass] = useState(false);
+  const [creatingUser, setCreatingUser] = useState(false);
 
   const applySelectedUser = (uId, list = userList) => {
     setSelectedUserId(uId);
@@ -80,6 +95,8 @@ export default function AdminDashboard() {
     if (u) {
       setEditFullName(u.full_name || '');
       setEditUsername(u.username || '');
+      setEditRole(u.role || 'vendedora');
+      setEditStoreId(u.store_id || 1);
     }
     setNewPasswordVal('');
     setConfirmPasswordVal('');
@@ -89,8 +106,7 @@ export default function AdminDashboard() {
     try {
       const res = await apiFetch('/admin/users');
       if (res.success) {
-        // Only show the first 2 accounts (admin + main vendedora account), not the generic 3rd account
-        const list = (res.users || []).slice(0, 2);
+        const list = res.users || [];
         setUserList(list);
         if (list.length > 0) {
           const current = list.find(x => String(x.id) === String(selectedUserId)) || list[0];
@@ -104,6 +120,7 @@ export default function AdminDashboard() {
 
   const handleOpenUserModal = () => {
     setShowUserModal(true);
+    setUserModalTab('edit');
     fetchUsersList();
   };
 
@@ -126,7 +143,8 @@ export default function AdminDashboard() {
     try {
       const body = {
         full_name: editFullName.trim(),
-        username: editUsername.trim().toLowerCase()
+        username: editUsername.trim().toLowerCase(),
+        store_id: editRole === 'administrador' ? null : parseInt(editStoreId || 1, 10)
       };
       if (newPasswordVal.trim()) {
         body.newPassword = newPasswordVal.trim();
@@ -150,6 +168,61 @@ export default function AdminDashboard() {
       alert(err.message);
     } finally {
       setUpdatingPass(false);
+    }
+  };
+
+  const handleCreateUser = async (e) => {
+    e.preventDefault();
+    if (!createFullName.trim()) return alert('Ingrese el nombre completo.');
+    if (!createUsername.trim()) return alert('Ingrese el nombre de usuario.');
+    if (createUsername.trim().length < 3) return alert('El usuario debe tener al menos 3 caracteres.');
+    if (!createPassword.trim()) return alert('Ingrese la contraseña.');
+    if (createPassword.trim().length < 4) return alert('La contraseña debe tener al menos 4 caracteres.');
+    if (createPassword !== createConfirmPass) return alert('Las contraseñas no coinciden.');
+
+    setCreatingUser(true);
+    try {
+      const res = await apiFetch('/admin/users', {
+        method: 'POST',
+        body: {
+          full_name: createFullName.trim(),
+          username: createUsername.trim().toLowerCase(),
+          role: createRole,
+          store_id: createRole === 'administrador' ? null : parseInt(createStoreId, 10),
+          password: createPassword.trim()
+        }
+      });
+
+      if (res.success) {
+        alert(res.message || 'Usuario creado exitosamente.');
+        setCreateFullName('');
+        setCreateUsername('');
+        setCreatePassword('');
+        setCreateConfirmPass('');
+        setUserModalTab('edit');
+        await fetchUsersList();
+      } else {
+        alert(res.error || 'Error al crear usuario.');
+      }
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setCreatingUser(false);
+    }
+  };
+
+  const handleDeleteUser = async (uId, uName) => {
+    if (!window.confirm(`¿Está seguro de eliminar el usuario "${uName}"? Esta acción no se puede deshacer.`)) return;
+    try {
+      const res = await apiFetch(`/admin/users/${uId}`, { method: 'DELETE' });
+      if (res.success) {
+        alert(res.message || 'Usuario eliminado.');
+        fetchUsersList();
+      } else {
+        alert(res.error || 'Error al eliminar usuario.');
+      }
+    } catch (err) {
+      alert(err.message);
     }
   };
 
@@ -946,156 +1019,390 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* MODAL GESTIÓN DE SEGURIDAD Y CAMBIO DE CONTRASEÑAS */}
+      {/* MODAL GESTIÓN DE SEGURIDAD, USUARIOS Y TIENDAS */}
       {showUserModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999, padding: '1rem' }}>
-          <div className="card" style={{ width: '100%', maxWidth: '520px', backgroundColor: '#0f172a', border: '2px solid #38bdf8', padding: '1.5rem', boxShadow: '0 25px 50px rgba(0,0,0,0.95)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid #1e293b', paddingBottom: '0.75rem' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '580px', backgroundColor: '#0f172a', border: '2px solid #38bdf8', padding: '1.5rem', boxShadow: '0 25px 50px rgba(0,0,0,0.95)', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid #1e293b', paddingBottom: '0.75rem' }}>
               <h3 style={{ fontSize: '1.15rem', fontWeight: '900', color: '#38bdf8', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <KeyRound size={22} /> Cambio y Recuperación de Contraseñas
+                <KeyRound size={22} /> Gestión de Accesos, Tiendas y Contraseñas
               </h3>
               <button onClick={() => setShowUserModal(false)} className="btn-close-neon" title="Cerrar">
                 <X size={18} />
               </button>
             </div>
 
-            {/* Default Access Reminder Banner */}
-            <div style={{ backgroundColor: '#1e293b', border: '1px solid #3b82f6', borderRadius: '10px', padding: '0.75rem 1rem', marginBottom: '1.25rem', fontSize: '0.82rem' }}>
-              <div style={{ color: '#93c5fd', fontWeight: '900', marginBottom: '0.2rem' }}>💡 ACCESOS ACTIVOS DEL SISTEMA:</div>
-              <div style={{ color: '#cbd5e1' }}>• <strong>Administrador:</strong> Usuario actual en BD</div>
-              <div style={{ color: '#cbd5e1' }}>• <strong>Vendedora:</strong> Usuario actual en BD</div>
+            {/* Banner de Accesos Activos en el Sistema de 2 Tiendas */}
+            <div style={{ backgroundColor: '#1e293b', border: '1px solid #3b82f6', borderRadius: '10px', padding: '0.75rem 1rem', marginBottom: '1rem', fontSize: '0.82rem' }}>
+              <div style={{ color: '#93c5fd', fontWeight: '900', marginBottom: '0.35rem' }}>
+                💡 CUENTAS ACTIVAS EN EL SISTEMA (2 TIENDAS):
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                {userList.map(u => (
+                  <div key={u.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#cbd5e1', fontSize: '0.8rem' }}>
+                    <div>
+                      {u.role === 'administrador' ? '🛡️' : '🏬'} <strong>{u.full_name}</strong> ({u.username})
+                    </div>
+                    <span style={{
+                      backgroundColor: u.role === 'administrador' ? 'rgba(56,189,248,0.2)' : (u.store_id === 2 ? 'rgba(168,85,247,0.2)' : 'rgba(34,197,94,0.2)'),
+                      color: u.role === 'administrador' ? '#38bdf8' : (u.store_id === 2 ? '#c084fc' : '#4ade80'),
+                      padding: '0.1rem 0.45rem',
+                      borderRadius: '4px',
+                      fontWeight: '800',
+                      fontSize: '0.72rem'
+                    }}>
+                      {u.role === 'administrador' ? 'ADMIN (Acceso Total)' : `TIENDA ${u.store_id || 1}`}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            <form onSubmit={handleAdminUpdateUser} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label" style={{ color: '#ffffff', fontWeight: '800' }}>Seleccione la Cuenta a Modificar:</label>
-                <select
-                  className="form-select"
-                  value={selectedUserId}
-                  onChange={(e) => applySelectedUser(e.target.value)}
-                  style={{ fontWeight: 'bold' }}
-                >
-                  {userList.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      👤 {u.full_name} ({u.username}) — Rol: {u.role.toUpperCase()}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            {/* Modal Tabs: Editar Existente vs Crear Nuevo */}
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', borderBottom: '1px solid #1e293b', paddingBottom: '0.65rem' }}>
+              <button
+                type="button"
+                onClick={() => setUserModalTab('edit')}
+                style={{
+                  flex: 1,
+                  padding: '0.5rem',
+                  borderRadius: '8px',
+                  border: userModalTab === 'edit' ? '1.5px solid #38bdf8' : '1px solid #334155',
+                  backgroundColor: userModalTab === 'edit' ? '#0284c7' : 'transparent',
+                  color: userModalTab === 'edit' ? '#ffffff' : '#94a3b8',
+                  fontWeight: '800',
+                  fontSize: '0.85rem',
+                  cursor: 'pointer'
+                }}
+              >
+                ✏️ Modificar Cuenta Existente
+              </button>
+              <button
+                type="button"
+                onClick={() => setUserModalTab('create')}
+                style={{
+                  flex: 1,
+                  padding: '0.5rem',
+                  borderRadius: '8px',
+                  border: userModalTab === 'create' ? '1.5px solid #22c55e' : '1px solid #334155',
+                  backgroundColor: userModalTab === 'create' ? '#15803d' : 'transparent',
+                  color: userModalTab === 'create' ? '#ffffff' : '#94a3b8',
+                  fontWeight: '800',
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.35rem'
+                }}
+              >
+                <UserPlus size={16} /> ➕ Crear Nueva Cuenta (Tienda 1 o 2)
+              </button>
+            </div>
 
-              {/* Nombre Completo y Usuario */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+            {/* TAB 1: MODIFICAR CUENTA EXISTENTE */}
+            {userModalTab === 'edit' && (
+              <form onSubmit={handleAdminUpdateUser} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label" style={{ color: '#ffffff', fontWeight: '800' }}>Nombre Completo / Titular:</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    placeholder="Ej: Vendedora Principal"
-                    value={editFullName}
-                    onChange={(e) => setEditFullName(e.target.value)}
-                    required
-                  />
+                  <label className="form-label" style={{ color: '#ffffff', fontWeight: '800' }}>Seleccione la Cuenta a Modificar:</label>
+                  <select
+                    className="form-select"
+                    value={selectedUserId}
+                    onChange={(e) => applySelectedUser(e.target.value)}
+                    style={{ fontWeight: 'bold' }}
+                  >
+                    {userList.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.role === 'administrador' ? '🛡️' : '🏬'} {u.full_name} ({u.username}) — {u.role === 'administrador' ? 'ADMINISTRADOR' : `VENDEDORA TIENDA ${u.store_id || 1}`}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label" style={{ color: '#ffffff', fontWeight: '800' }}>Usuario (para Login):</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    placeholder="Ej: vendedora"
-                    value={editUsername}
-                    onChange={(e) => setEditUsername(e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
-
-              {/* Sección Contraseña Opcional */}
-              <div style={{ borderTop: '1px solid #1e293b', paddingTop: '0.65rem', marginTop: '0.2rem' }}>
-                <div style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: '700', marginBottom: '0.65rem' }}>
-                  🔑 Cambio de Contraseña <span style={{ color: '#64748b', fontWeight: 'normal' }}>(Opcional — deje en blanco si solo cambia nombre o usuario):</span>
-                </div>
-
+                {/* Nombre Completo y Usuario */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                   <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label" style={{ color: '#cbd5e1', fontWeight: '700', fontSize: '0.8rem' }}>Nueva Contraseña:</label>
-                    <div style={{ position: 'relative' }}>
-                      <input
-                        type={showNewPass ? 'text' : 'password'}
-                        className="form-input"
-                        style={{ paddingRight: '2.5rem' }}
-                        placeholder="Dejar vacío para no cambiar..."
-                        value={newPasswordVal}
-                        onChange={(e) => setNewPasswordVal(e.target.value)}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowNewPass(!showNewPass)}
-                        style={{
-                          position: 'absolute',
-                          right: '0.75rem',
-                          top: '50%',
-                          transform: 'translateY(-50%)',
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                          color: showNewPass ? '#38bdf8' : '#94a3b8',
-                          padding: 0,
-                          display: 'flex',
-                          alignItems: 'center'
-                        }}
-                        title={showNewPass ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                      >
-                        {showNewPass ? <EyeOff size={18} /> : <Eye size={18} />}
-                      </button>
-                    </div>
+                    <label className="form-label" style={{ color: '#ffffff', fontWeight: '800' }}>Nombre Completo / Titular:</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Ej: Vendedora Tienda 2"
+                      value={editFullName}
+                      onChange={(e) => setEditFullName(e.target.value)}
+                      required
+                    />
                   </div>
 
                   <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label" style={{ color: '#cbd5e1', fontWeight: '700', fontSize: '0.8rem' }}>Confirmar Contraseña:</label>
-                    <div style={{ position: 'relative' }}>
-                      <input
-                        type={showConfirmPass ? 'text' : 'password'}
-                        className="form-input"
-                        style={{ paddingRight: '2.5rem' }}
-                        placeholder="Repita nueva contraseña..."
-                        value={confirmPasswordVal}
-                        onChange={(e) => setConfirmPasswordVal(e.target.value)}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowConfirmPass(!showConfirmPass)}
-                        style={{
-                          position: 'absolute',
-                          right: '0.75rem',
-                          top: '50%',
-                          transform: 'translateY(-50%)',
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                          color: showConfirmPass ? '#38bdf8' : '#94a3b8',
-                          padding: 0,
-                          display: 'flex',
-                          alignItems: 'center'
-                        }}
-                        title={showConfirmPass ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                      >
-                        {showConfirmPass ? <EyeOff size={18} /> : <Eye size={18} />}
-                      </button>
+                    <label className="form-label" style={{ color: '#ffffff', fontWeight: '800' }}>Usuario (Login):</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Ej: vendedora2"
+                      value={editUsername}
+                      onChange={(e) => setEditUsername(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* Tienda Asignada (si no es administrador) */}
+                {editRole !== 'administrador' && (
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ color: '#ffffff', fontWeight: '800' }}>Tienda Asignada para Operaciones:</label>
+                    <select
+                      className="form-select"
+                      value={editStoreId}
+                      onChange={(e) => setEditStoreId(Number(e.target.value))}
+                      style={{ fontWeight: 'bold', borderColor: editStoreId === 2 ? '#a855f7' : '#22c55e' }}
+                    >
+                      <option value={1}>🏬 TIENDA 1</option>
+                      <option value={2}>🏬 TIENDA 2</option>
+                    </select>
+                  </div>
+                )}
+
+                {/* Sección Contraseña Opcional */}
+                <div style={{ borderTop: '1px solid #1e293b', paddingTop: '0.65rem', marginTop: '0.2rem' }}>
+                  <div style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: '700', marginBottom: '0.65rem' }}>
+                    🔑 Cambio de Contraseña <span style={{ color: '#64748b', fontWeight: 'normal' }}>(Opcional — deje en blanco si no desea cambiarla):</span>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ color: '#cbd5e1', fontWeight: '700', fontSize: '0.8rem' }}>Nueva Contraseña:</label>
+                      <div style={{ position: 'relative' }}>
+                        <input
+                          type={showNewPass ? 'text' : 'password'}
+                          className="form-input"
+                          style={{ paddingRight: '2.5rem' }}
+                          placeholder="Dejar vacío para no cambiar..."
+                          value={newPasswordVal}
+                          onChange={(e) => setNewPasswordVal(e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowNewPass(!showNewPass)}
+                          style={{
+                            position: 'absolute',
+                            right: '0.75rem',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            color: showNewPass ? '#38bdf8' : '#94a3b8',
+                            padding: 0,
+                            display: 'flex',
+                            alignItems: 'center'
+                          }}
+                          title={showNewPass ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                        >
+                          {showNewPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ color: '#cbd5e1', fontWeight: '700', fontSize: '0.8rem' }}>Confirmar Contraseña:</label>
+                      <div style={{ position: 'relative' }}>
+                        <input
+                          type={showConfirmPass ? 'text' : 'password'}
+                          className="form-input"
+                          style={{ paddingRight: '2.5rem' }}
+                          placeholder="Repita nueva contraseña..."
+                          value={confirmPasswordVal}
+                          onChange={(e) => setConfirmPasswordVal(e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirmPass(!showConfirmPass)}
+                          style={{
+                            position: 'absolute',
+                            right: '0.75rem',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            color: showConfirmPass ? '#38bdf8' : '#94a3b8',
+                            padding: 0,
+                            display: 'flex',
+                            alignItems: 'center'
+                          }}
+                          title={showConfirmPass ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                        >
+                          {showConfirmPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
-                <button type="button" onClick={() => setShowUserModal(false)} className="btn btn-secondary">
-                  Cancelar
-                </button>
-                <button type="submit" disabled={updatingPass} className="btn btn-primary" style={{ fontWeight: '900' }}>
-                  {updatingPass ? 'Guardando...' : '💾 Guardar Cambios de Cuenta'}
-                </button>
-              </div>
-            </form>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
+                  <div>
+                    {editRole !== 'administrador' && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteUser(selectedUserId, editUsername)}
+                        className="btn btn-sm"
+                        style={{ backgroundColor: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: '1px solid #ef4444' }}
+                        title="Eliminar usuario"
+                      >
+                        <Trash2 size={14} /> Eliminar Cuenta
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.75rem' }}>
+                    <button type="button" onClick={() => setShowUserModal(false)} className="btn btn-secondary">
+                      Cancelar
+                    </button>
+                    <button type="submit" disabled={updatingPass} className="btn btn-primary" style={{ fontWeight: '900' }}>
+                      {updatingPass ? 'Guardando...' : '💾 Guardar Cambios'}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            )}
+
+            {/* TAB 2: CREAR NUEVO USUARIO / VENDEDORA */}
+            {userModalTab === 'create' && (
+              <form onSubmit={handleCreateUser} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ color: '#ffffff', fontWeight: '800' }}>Nombre Completo / Titular:</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Ej: Vendedora Tienda 2"
+                      value={createFullName}
+                      onChange={(e) => setCreateFullName(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ color: '#ffffff', fontWeight: '800' }}>Usuario (para Login):</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Ej: vendedora2"
+                      value={createUsername}
+                      onChange={(e) => setCreateUsername(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: createRole === 'administrador' ? '1fr' : '1fr 1fr', gap: '0.75rem' }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ color: '#ffffff', fontWeight: '800' }}>Rol del Usuario:</label>
+                    <select
+                      className="form-select"
+                      value={createRole}
+                      onChange={(e) => setCreateRole(e.target.value)}
+                      style={{ fontWeight: 'bold' }}
+                    >
+                      <option value="vendedora">🏬 Vendedora</option>
+                      <option value="administrador">🛡️ Administrador</option>
+                    </select>
+                  </div>
+
+                  {createRole !== 'administrador' && (
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ color: '#ffffff', fontWeight: '800' }}>Tienda Asignada:</label>
+                      <select
+                        className="form-select"
+                        value={createStoreId}
+                        onChange={(e) => setCreateStoreId(Number(e.target.value))}
+                        style={{ fontWeight: 'bold', borderColor: createStoreId === 2 ? '#a855f7' : '#22c55e' }}
+                      >
+                        <option value={1}>🏬 TIENDA 1</option>
+                        <option value={2}>🏬 TIENDA 2</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ borderTop: '1px solid #1e293b', paddingTop: '0.65rem' }}>
+                  <div style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: '700', marginBottom: '0.65rem' }}>
+                    🔑 Contraseña de Acceso (Mínimo 4 caracteres):
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ color: '#cbd5e1', fontWeight: '700', fontSize: '0.8rem' }}>Contraseña Inicial:</label>
+                      <div style={{ position: 'relative' }}>
+                        <input
+                          type={showCreatePass ? 'text' : 'password'}
+                          className="form-input"
+                          style={{ paddingRight: '2.5rem' }}
+                          placeholder="Ingrese contraseña..."
+                          value={createPassword}
+                          onChange={(e) => setCreatePassword(e.target.value)}
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowCreatePass(!showCreatePass)}
+                          style={{
+                            position: 'absolute',
+                            right: '0.75rem',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            color: showCreatePass ? '#22c55e' : '#94a3b8',
+                            padding: 0,
+                            display: 'flex',
+                            alignItems: 'center'
+                          }}
+                          title={showCreatePass ? 'Ocultar' : 'Mostrar'}
+                        >
+                          {showCreatePass ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ color: '#cbd5e1', fontWeight: '700', fontSize: '0.8rem' }}>Confirmar Contraseña:</label>
+                      <input
+                        type={showCreatePass ? 'text' : 'password'}
+                        className="form-input"
+                        placeholder="Repita la contraseña..."
+                        value={createConfirmPass}
+                        onChange={(e) => setCreateConfirmPass(e.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+                  <button type="button" onClick={() => setUserModalTab('edit')} className="btn btn-secondary">
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={creatingUser}
+                    className="btn"
+                    style={{
+                      backgroundColor: '#22c55e',
+                      color: '#052e16',
+                      fontWeight: '900',
+                      padding: '0.5rem 1.25rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.4rem'
+                    }}
+                  >
+                    <UserPlus size={16} />
+                    {creatingUser ? 'Creando...' : '✅ Crear y Activar Usuario'}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

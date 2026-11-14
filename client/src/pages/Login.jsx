@@ -254,6 +254,21 @@ export default function Login() {
           }}>
             Control financiero empresarial
           </p>
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.4rem',
+            backgroundColor: 'rgba(56, 189, 248, 0.1)',
+            border: '1px solid rgba(56, 189, 248, 0.3)',
+            borderRadius: '20px',
+            padding: '0.25rem 0.75rem',
+            marginTop: '0.5rem',
+            fontSize: '0.74rem',
+            color: '#38bdf8',
+            fontWeight: '700'
+          }}>
+            🏬 Sistema Multitienda (Tienda 1 & Tienda 2)
+          </div>
         </div>
 
         {/* Error */}

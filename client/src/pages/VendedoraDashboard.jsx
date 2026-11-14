@@ -28,6 +28,41 @@ export default function VendedoraDashboard() {
       {/* Alerta Persistente de Observaciones Acumulables (No se borra hasta subsanar) */}
       <PendingObservationsBanner isAdmin={false} />
 
+      {/* Indicador de Tienda Activa */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: '#0f172a',
+        padding: '0.65rem 1.25rem',
+        borderRadius: '12px',
+        border: storeId === 2 ? '2px solid #a855f7' : '2px solid #22c55e',
+        boxShadow: storeId === 2 ? '0 0 16px rgba(168, 85, 247, 0.25)' : '0 0 16px rgba(34, 197, 94, 0.25)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+          <span style={{ fontSize: '1.35rem' }}>🏬</span>
+          <div>
+            <div style={{ fontSize: '1.05rem', fontWeight: '900', color: storeId === 2 ? '#c084fc' : '#4ade80', letterSpacing: '0.04em' }}>
+              TIENDA {storeId} — PLANILLA OPERATIVA
+            </div>
+            <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+              Sesión iniciada: <strong style={{ color: '#ffffff' }}>{user?.full_name || user?.username}</strong>
+            </div>
+          </div>
+        </div>
+        <div style={{
+          backgroundColor: storeId === 2 ? 'rgba(168, 85, 247, 0.15)' : 'rgba(34, 197, 94, 0.15)',
+          color: storeId === 2 ? '#d8b4fe' : '#86efac',
+          border: storeId === 2 ? '1px solid #a855f7' : '1px solid #22c55e',
+          padding: '0.35rem 0.85rem',
+          borderRadius: '20px',
+          fontSize: '0.78rem',
+          fontWeight: '800'
+        }}>
+          ● Modo Vendedora (Tienda {storeId})
+        </div>
+      </div>
+
       {/* Vendedora Tabs Header */}
       <div style={{
         display: 'flex',

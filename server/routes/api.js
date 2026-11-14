@@ -102,7 +102,9 @@ router.post('/auth/login', authController.login);
 router.get('/auth/profile', authenticateToken, authController.getProfile);
 router.post('/auth/change-password', authenticateToken, authController.changePassword);
 router.get('/admin/users', authenticateToken, requireRole('administrador'), authController.getUsers);
+router.post('/admin/users', authenticateToken, requireRole('administrador'), authController.createUser);
 router.put('/admin/users/:id/reset-password', authenticateToken, requireRole('administrador'), authController.adminResetPassword);
+router.delete('/admin/users/:id', authenticateToken, requireRole('administrador'), authController.deleteUser);
 
 // --- DAILY SHEET & WEEKLY REPORT ---
 router.get('/daily-sheet', authenticateToken, dailySheetController.getDailySheet);
