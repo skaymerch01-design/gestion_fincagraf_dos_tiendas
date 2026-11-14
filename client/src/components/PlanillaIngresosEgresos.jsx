@@ -217,7 +217,7 @@ export default function PlanillaIngresosEgresos({ readOnly = false, storeId = 1 
   // Income Form State
   const [incEntryType, setIncEntryType] = useState('CONTRATO');
   const [incCont, setIncCont] = useState('');
-  const [incVendedor, setIncVendedor] = useState('Carla');
+  const [incVendedor, setIncVendedor] = useState('');
   const [incDetails, setIncDetails] = useState('');
   const [incTotal, setIncTotal] = useState('');
   const [incAmount, setIncAmount] = useState('');
@@ -250,19 +250,15 @@ export default function PlanillaIngresosEgresos({ readOnly = false, storeId = 1 
     fetchActiveLoans();
   }, []);
 
-  // Sellers List State (Carla, Jhon, Juan, Joshy, Jose Luis + Dinámico)
-  const DEFAULT_SELLERS = ['Carla', 'Jhon', 'Juan', 'Joshy', 'Jose Luis'];
+  // Sellers List State (Dinámico - inicia vacío en la nueva gestión y se guarda al ingresar)
+  const DEFAULT_SELLERS = [];
   const [sellersList, setSellersList] = useState(() => {
     try {
-      const saved = localStorage.getItem('fincagraf_sellers');
+      const saved = localStorage.getItem('fincagraf_dos_tiendas_sellers');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const merged = [...DEFAULT_SELLERS];
-          parsed.forEach((s) => {
-            if (s && !merged.includes(s)) merged.push(s);
-          });
-          return merged;
+          return parsed.filter(Boolean);
         }
       }
     } catch (_) {}
@@ -279,7 +275,7 @@ export default function PlanillaIngresosEgresos({ readOnly = false, storeId = 1 
           const updated = [...sellersList, formattedName];
           setSellersList(updated);
           try {
-            localStorage.setItem('fincagraf_sellers', JSON.stringify(updated));
+            localStorage.setItem('fincagraf_dos_tiendas_sellers', JSON.stringify(updated));
           } catch (_) {}
         }
         setter(formattedName);
@@ -534,8 +530,10 @@ export default function PlanillaIngresosEgresos({ readOnly = false, storeId = 1 
         if (res.date_str === activeDateRef.current) {
           setSheetData(res);
           setPreviousCash(res.previous_cash !== undefined ? res.previous_cash : 0);
-          setIsFirstDay(!!res.is_first_day);
-          if (res.is_first_day) {
+          const isNovDec2026 = (res.date_str >= '2026-11-01' && res.date_str <= '2026-12-31');
+          const isAperturaOpen = !!res.is_first_day || isNovDec2026;
+          setIsFirstDay(isAperturaOpen);
+          if (isAperturaOpen) {
             setCashInputVal(res.previous_cash > 0 ? String(res.previous_cash) : '');
           }
         }
@@ -604,6 +602,9 @@ export default function PlanillaIngresosEgresos({ readOnly = false, storeId = 1 
       }
       if (/^\d+$/.test(finalContractCode) && nextContractNum && !lookupInfo?.exists) {
         const numVal = parseInt(finalContractCode, 10);
+        if (numVal < 201) {
+          return alert(`⚠️ El correlativo inicial de contratos para esta gestión inicia en el N° 201.`);
+        }
         if (numVal > nextContractNum) {
           return alert(`⚠️ El número de contrato debe ser correlativo sin saltarse números. El siguiente contrato correlativo es el N° ${nextContractNum}.`);
         }
@@ -619,7 +620,12 @@ export default function PlanillaIngresosEgresos({ readOnly = false, storeId = 1 
 
     // Optimistic instant UI insert (aparece en 0 milisegundos)
     const isNoSeller = incEntryType !== 'CONTRATO' || finalContractCode === 'PRESTAMO' || finalContractCode === 'CAMBIO' || finalContractCode === 'OTROS' || finalContractCode === 'OTRO';
-    const chosenVendedor = isNoSeller ? null : (incVendedor ? incVendedor.trim() : 'Carla');
+    const chosenVendedor = isNoSeller ? null : (incVendedor ? incVendedor.trim() : '');
+
+    if (incEntryType === 'CONTRATO' && !isNoSeller && !chosenVendedor) {
+      return alert('⚠️ Por favor seleccione o agregue el nombre de la vendedora (haga clic en el selector "Vendedor/a" o en "+ Nuevo...").');
+    }
+
     const tempId = 'temp-' + Date.now();
     const optimisticRow = {
       id: tempId,
@@ -651,7 +657,7 @@ export default function PlanillaIngresosEgresos({ readOnly = false, storeId = 1 
     });
 
     setIncCont('');
-    setIncVendedor('Carla');
+    // Mantiene la vendedora seleccionada para que no tenga que volver a elegirla en cada venta
     setIncEntryType('CONTRATO');
     setIncDetails('');
     setIncTotal('');
@@ -857,7 +863,7 @@ export default function PlanillaIngresosEgresos({ readOnly = false, storeId = 1 
     if (type === 'income') {
       const isNotContrato = row.entry_type === 'PRESTAMO' || row.entry_type === 'INTERCAMBIO' || row.entry_type === 'OTRO' || row.contract_num === 'PRESTAMO' || row.contract_num === 'CAMBIO' || row.contract_num === 'OTROS' || row.contract_num === 'OTRO';
       setEditCont(row.contract_num || '');
-      setEditVendedor(isNotContrato ? '' : ((row.vendedor_name && row.vendedor_name !== 'Vendedora') ? row.vendedor_name : 'Carla'));
+      setEditVendedor(isNotContrato ? '' : ((row.vendedor_name && row.vendedor_name !== 'Vendedora') ? row.vendedor_name : ''));
       setEditDetails(row.details || '');
       setEditTotal(row.total_amount !== undefined && row.total_amount !== null ? row.total_amount : '');
       setEditAmount(row.amount_paid !== undefined && row.amount_paid !== null ? row.amount_paid : '');
@@ -881,7 +887,7 @@ export default function PlanillaIngresosEgresos({ readOnly = false, storeId = 1 
           method: 'PUT',
           body: {
             contract_num: editCont,
-            vendedor_name: isNotContrato ? null : (editVendedor || 'Carla'),
+            vendedor_name: isNotContrato ? null : (editVendedor ? editVendedor.trim() : null),
             details: editDetails,
             total_amount: editTotal,
             amount_paid: editAmount,
@@ -1262,7 +1268,7 @@ export default function PlanillaIngresosEgresos({ readOnly = false, storeId = 1 
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
                     <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>CAJA ANTERIOR (EN EFECTIVO)</span>
                     <span style={{ fontSize: '0.65rem', backgroundColor: '#000000', color: '#facc15', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>
-                      {isFirstDay ? '💡 Monto Inicial (1 sola vez)' : '🔒 Correlativo Automático'}
+                      {isFirstDay ? '💡 Apertura Efectivo (Nov-Dic 2026)' : '🔒 Correlativo Automático'}
                     </span>
                   </div>
 
@@ -1326,7 +1332,7 @@ export default function PlanillaIngresosEgresos({ readOnly = false, storeId = 1 
                           ? formatSoles(sheetData.previous_cash !== undefined ? sheetData.previous_cash : previousCash)
                           : 'S/ ...'}
                       </div>
-                      {isFirstDay && !readOnly && (
+                      {isFirstDay && (
                         <button
                           onClick={() => {
                             const cur = sheetData?.previous_cash !== undefined ? sheetData.previous_cash : previousCash;
@@ -1660,7 +1666,7 @@ export default function PlanillaIngresosEgresos({ readOnly = false, storeId = 1 
                                       border: '1px solid rgba(56, 189, 248, 0.25)',
                                       whiteSpace: 'nowrap'
                                     }}>
-                                      {row.vendedor_name !== 'Vendedora' ? row.vendedor_name : 'Carla'}
+                                      {(row.vendedor_name && row.vendedor_name !== 'Vendedora') ? row.vendedor_name : (row.vendedor_name || '—')}
                                     </span>
                                   ) : (
                                     <span style={{ color: '#64748b', fontSize: '0.85rem' }}>-</span>
@@ -1923,7 +1929,9 @@ export default function PlanillaIngresosEgresos({ readOnly = false, storeId = 1 
                                           setIncCont('OTROS');
                                         }
                                       } else {
-                                        setIncVendedor('Carla');
+                                        if (!incVendedor && sellersList.length > 0) {
+                                          setIncVendedor(sellersList[0]);
+                                        }
                                         if (incCont === 'PRESTAMO' || incCont === 'CAMBIO' || incCont === 'OTROS' || incCont === 'OTRO') {
                                           setIncCont(nextContractNum || '');
                                         }

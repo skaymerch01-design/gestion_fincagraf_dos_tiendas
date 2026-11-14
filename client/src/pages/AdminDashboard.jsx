@@ -725,7 +725,7 @@ export default function AdminDashboard() {
 
       {/* Render Selected View */}
       <div style={{ minHeight: '500px' }}>
-        {activeTab === 0 && <PlanillaIngresosEgresos key={selectedStoreId} storeId={selectedStoreId} readOnly={false} />}
+        {activeTab === 0 && <PlanillaIngresosEgresos key={selectedStoreId} storeId={selectedStoreId} readOnly={true} />}
         {activeTab === 1 && <CronogramaPagosTab storeId={selectedStoreId} />}
         {activeTab === 2 && <EstadoCuentaTab storeId={selectedStoreId} />}
         {activeTab === 3 && <BalanceGlobalTab storeId={selectedStoreId} />}
@@ -963,7 +963,7 @@ export default function AdminDashboard() {
             <div style={{ backgroundColor: '#1e293b', border: '1px solid #3b82f6', borderRadius: '10px', padding: '0.75rem 1rem', marginBottom: '1.25rem', fontSize: '0.82rem' }}>
               <div style={{ color: '#93c5fd', fontWeight: '900', marginBottom: '0.2rem' }}>💡 ACCESOS ACTIVOS DEL SISTEMA:</div>
               <div style={{ color: '#cbd5e1' }}>• <strong>Administrador:</strong> Usuario actual en BD</div>
-              <div style={{ color: '#cbd5e1' }}>• <strong>Vendedora (Carla):</strong> Usuario actual en BD</div>
+              <div style={{ color: '#cbd5e1' }}>• <strong>Vendedora:</strong> Usuario actual en BD</div>
             </div>
 
             <form onSubmit={handleAdminUpdateUser} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>

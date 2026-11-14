@@ -603,12 +603,7 @@ async function fetchProcessedContractsList({ year, month, search, status, startD
       }
     }
     let latestPaymentDate = null;
-    let sellerName = c.vendedor_name || c.created_by_name || 'Vendedora';
-    if (/carla/i.test(sellerName)) sellerName = 'Carla';
-    else if (/jhon/i.test(sellerName)) sellerName = 'Jhon';
-    else if (/jose luis/i.test(sellerName)) sellerName = 'Jose Luis';
-    else if (/joshy/i.test(sellerName)) sellerName = 'Joshy';
-    else if (/juan/i.test(sellerName)) sellerName = 'Juan';
+    let sellerName = (c.vendedor_name || c.created_by_name || '').trim();
 
     let abonosSum = 0;
     cPayments.forEach(p => {
@@ -826,12 +821,7 @@ exports.getMonthlyReport = async (req, res) => {
         orderStatuses[oStatus] = 1;
       }
 
-      let seller = item.vendedor_name || 'Vendedora';
-      if (/carla/i.test(seller)) seller = 'Carla';
-      else if (/jhon/i.test(seller)) seller = 'Jhon';
-      else if (/jose luis/i.test(seller)) seller = 'Jose Luis';
-      else if (/joshy/i.test(seller)) seller = 'Joshy';
-      else if (/juan/i.test(seller)) seller = 'Juan';
+      let seller = (item.vendedor_name || 'Vendedora').trim();
 
       if (!sellers[seller]) {
         sellers[seller] = { count: 0, total_amount: 0, total_paid: 0, balance_due: 0 };

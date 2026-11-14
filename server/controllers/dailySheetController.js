@@ -73,11 +73,25 @@ function getNextMonday(mondayStr) {
 async function recalculateCashChain(referenceDateStr, storeId = 1) {
   // 1. Determine starting cash at SYSTEM_APERTURA_DATE
   let startingCash = SYSTEM_APERTURA_AMOUNT;
-  const aperturaRow = await dbGet(`SELECT previous_cash FROM daily_cash_sheets WHERE date_str = ? AND (store_id = ? OR store_id IS NULL)`, [SYSTEM_APERTURA_DATE, storeId]);
+  let aperturaRow = await dbGet(`SELECT previous_cash FROM daily_cash_sheets WHERE date_str = ? AND store_id = ?`, [SYSTEM_APERTURA_DATE, storeId]);
+  if (!aperturaRow) {
+    aperturaRow = await dbGet(`SELECT previous_cash FROM daily_cash_sheets WHERE date_str = ? AND store_id IS NULL`, [SYSTEM_APERTURA_DATE]);
+  }
   if (aperturaRow && aperturaRow.previous_cash !== null && aperturaRow.previous_cash !== undefined) {
     const val = parseFloat(aperturaRow.previous_cash);
     if (val >= 0) {
       startingCash = val;
+    }
+  }
+
+  // Si no se encontró apertura fija en SYSTEM_APERTURA_DATE o es 0, buscar el monto inicial registrado para esta tienda
+  if (startingCash === 0) {
+    const earliestRow = await dbGet(
+      `SELECT previous_cash FROM daily_cash_sheets WHERE (store_id = ? OR store_id IS NULL) AND previous_cash > 0 ORDER BY date_str ASC LIMIT 1`,
+      [storeId]
+    );
+    if (earliestRow && earliestRow.previous_cash) {
+      startingCash = parseFloat(earliestRow.previous_cash);
     }
   }
 
@@ -214,7 +228,9 @@ exports.getDailySheet = async (req, res) => {
     const storeId = parseInt(req.query.storeId || 1, 10);
     const mondayStr = getMondayForDate(dateStr);
     
-    const is_first_day = (dateStr === SYSTEM_APERTURA_DATE);
+    // Habilitar apertura de efectivo para noviembre y diciembre 2026 (meses 11 y 12)
+    const isNovDec2026 = (dateStr >= '2026-11-01' && dateStr <= '2026-12-31');
+    const is_first_day = (dateStr === SYSTEM_APERTURA_DATE) || isNovDec2026;
 
     let sheet = await dbGet(`SELECT * FROM daily_cash_sheets WHERE date_str = ? AND (store_id = ? OR store_id IS NULL)`, [dateStr, storeId]);
     
@@ -302,12 +318,7 @@ exports.getDailySheet = async (req, res) => {
       const isPrestamoOrCambio = row.entry_type === 'PRESTAMO' || row.entry_type === 'INTERCAMBIO' || row.entry_type === 'OTRO' || row.contract_num === 'PRESTAMO' || row.contract_num === 'CAMBIO' || row.contract_num === 'OTROS' || row.contract_num === 'OTRO';
       let finalVendedor = null;
       if (!isPrestamoOrCambio) {
-        finalVendedor = row.vendedor_name || row.contract_vendedor || (row.registered_by_name && !/admin/i.test(row.registered_by_name) ? row.registered_by_name : '') || 'Carla';
-        if (/carla/i.test(finalVendedor)) finalVendedor = 'Carla';
-        else if (/jhon/i.test(finalVendedor)) finalVendedor = 'Jhon';
-        else if (/jose luis/i.test(finalVendedor)) finalVendedor = 'Jose Luis';
-        else if (/joshy/i.test(finalVendedor)) finalVendedor = 'Joshy';
-        else if (/juan/i.test(finalVendedor)) finalVendedor = 'Juan';
+        finalVendedor = row.vendedor_name || row.contract_vendedor || (row.registered_by_name && !/admin/i.test(row.registered_by_name) ? row.registered_by_name : '') || null;
       }
 
       // Breakdown for payment methods (handling initial deposit + final cancellation payment)
@@ -456,6 +467,35 @@ exports.updatePreviousCash = async (req, res) => {
       await dbRun(`INSERT INTO daily_cash_sheets (date_str, previous_cash, store_id) VALUES (?, ?, ?)`, [dateVal, cashVal, storeIdVal]);
     }
 
+    // Si no existen transacciones en efectivo registradas antes de esta fecha,
+    // sincronizar también SYSTEM_APERTURA_DATE ('2026-11-02') con este monto inicial
+    // para que la cadena correlativa de efectivo inicie con este saldo.
+    const priorIncomes = await dbGet(
+      `SELECT COUNT(*) as c FROM daily_income_entries 
+       WHERE date_str >= ? AND date_str < ? AND (store_id = ? OR store_id IS NULL) 
+       AND (efectivo_paid > 0 OR UPPER(payment_type) = 'EFECTIVO' OR UPPER(initial_payment_type) = 'EFECTIVO' OR UPPER(final_payment_type) = 'EFECTIVO')`,
+      [SYSTEM_APERTURA_DATE, dateVal, storeIdVal]
+    );
+    const priorExpenses = await dbGet(
+      `SELECT COUNT(*) as c FROM daily_expense_entries 
+       WHERE date_str >= ? AND date_str < ? AND (store_id = ? OR store_id IS NULL) 
+       AND UPPER(payment_type) = 'EFECTIVO'`,
+      [SYSTEM_APERTURA_DATE, dateVal, storeIdVal]
+    );
+    const hasPriorMovements = (parseInt(priorIncomes?.c || 0, 10) + parseInt(priorExpenses?.c || 0, 10)) > 0;
+
+    if (!hasPriorMovements) {
+      const apExisting = await dbGet(
+        `SELECT id FROM daily_cash_sheets WHERE date_str = ? AND (store_id = ? OR store_id IS NULL)`,
+        [SYSTEM_APERTURA_DATE, storeIdVal]
+      );
+      if (apExisting) {
+        await dbRun(`UPDATE daily_cash_sheets SET previous_cash = ?, store_id = ? WHERE id = ?`, [cashVal, storeIdVal, apExisting.id]);
+      } else {
+        await dbRun(`INSERT INTO daily_cash_sheets (date_str, previous_cash, store_id) VALUES (?, ?, ?)`, [SYSTEM_APERTURA_DATE, cashVal, storeIdVal]);
+      }
+    }
+
     // Cascade to all days of the week!
     await syncWeekCashSheets(dateVal, storeIdVal);
     await exportSnapshot(dbAll);
@@ -552,12 +592,7 @@ exports.addIncomeEntry = async (req, res) => {
       if (!cleanVendedor && req.user && req.user.full_name && !/admin/i.test(req.user.full_name)) {
         cleanVendedor = req.user.full_name;
       }
-      if (!cleanVendedor) cleanVendedor = 'Carla';
-      if (/carla/i.test(cleanVendedor)) cleanVendedor = 'Carla';
-      else if (/jhon/i.test(cleanVendedor)) cleanVendedor = 'Jhon';
-      else if (/jose luis/i.test(cleanVendedor)) cleanVendedor = 'Jose Luis';
-      else if (/joshy/i.test(cleanVendedor)) cleanVendedor = 'Joshy';
-      else if (/juan/i.test(cleanVendedor)) cleanVendedor = 'Juan';
+      if (!cleanVendedor) cleanVendedor = null;
     }
 
     let initialStatus = 'ACTIVO';
@@ -618,12 +653,7 @@ exports.updateIncomeEntry = async (req, res) => {
         const cRow = await dbGet(`SELECT vendedor_name FROM contracts WHERE contract_code = ? LIMIT 1`, [prevEntry.contract_num]);
         if (cRow && cRow.vendedor_name) finalVendedor = cRow.vendedor_name;
       }
-      if (!finalVendedor) finalVendedor = 'Carla';
-      if (/carla/i.test(finalVendedor)) finalVendedor = 'Carla';
-      else if (/jhon/i.test(finalVendedor)) finalVendedor = 'Jhon';
-      else if (/jose luis/i.test(finalVendedor)) finalVendedor = 'Jose Luis';
-      else if (/joshy/i.test(finalVendedor)) finalVendedor = 'Joshy';
-      else if (/juan/i.test(finalVendedor)) finalVendedor = 'Juan';
+      if (!finalVendedor) finalVendedor = null;
     }
 
     // Recalculate payment breakdown
@@ -1217,7 +1247,7 @@ exports.getWeeklyReport = async (req, res) => {
     // 3. Contratos anulados (Rojo) = NO SUMA NADA
     // 4. Contrato verde = SUMA (Contrato nuevo con saldo pendiente)
     // 5. Contrato naranja = SUMA (Contrato nuevo original cancelado/entregado al 100%)
-    const defaultSellers = ['Carla', 'Jhon', 'Joshy', 'Juan', 'Jose Luis'];
+    const defaultSellers = [];
     const sellersRankingMap = {};
     defaultSellers.forEach(name => {
       sellersRankingMap[name] = {
@@ -1250,12 +1280,8 @@ exports.getWeeklyReport = async (req, res) => {
       }
 
       // Normalizar nombre de vendedora
-      let seller = row.vendedor_name || row.contract_vendedor || 'Carla';
-      if (/carla/i.test(seller)) seller = 'Carla';
-      else if (/jhon/i.test(seller)) seller = 'Jhon';
-      else if (/jose luis/i.test(seller)) seller = 'Jose Luis';
-      else if (/joshy/i.test(seller)) seller = 'Joshy';
-      else if (/juan/i.test(seller)) seller = 'Juan';
+      let seller = (row.vendedor_name || row.contract_vendedor || '').trim();
+      if (!seller) return;
 
       if (!sellersRankingMap[seller]) {
         sellersRankingMap[seller] = {
@@ -1315,7 +1341,7 @@ exports.getWeeklyReport = async (req, res) => {
     });
 
     const sellersRanking = Object.values(sellersRankingMap)
-      .filter(s => s.contracts_count > 0 || s.total_recaudado > 0 || ['Carla', 'Jhon'].includes(s.seller_name))
+      .filter(s => s.contracts_count > 0 || s.total_recaudado > 0)
       .sort((a, b) => {
         if (b.contracts_count !== a.contracts_count) {
           return b.contracts_count - a.contracts_count;
@@ -1382,12 +1408,7 @@ exports.getWeeklyReport = async (req, res) => {
         [start, end]
       );
       detailedIncomes = incRows.map(r => {
-        let seller = r.contract_vendedor || (r.registered_by_name && !/admin/i.test(r.registered_by_name) ? r.registered_by_name : '') || 'Carla';
-        if (/carla/i.test(seller)) seller = 'Carla';
-        else if (/jhon/i.test(seller)) seller = 'Jhon';
-        else if (/jose luis/i.test(seller)) seller = 'Jose Luis';
-        else if (/joshy/i.test(seller)) seller = 'Joshy';
-        else if (/juan/i.test(seller)) seller = 'Juan';
+        let seller = (r.vendedor_name || r.contract_vendedor || (r.registered_by_name && !/admin/i.test(r.registered_by_name) ? r.registered_by_name : '') || '').trim();
 
         const code = (r.contract_num || '').trim();
         const history = allHistoryByContract[code] || [];
@@ -1616,9 +1637,13 @@ exports.searchExpenses = async (req, res) => {
 exports.getNextContractNum = async (req, res) => {
   try {
     const storeId = parseInt(req.query.storeId || 1, 10);
-    // Calculado exclusivamente a partir de la planilla diaria de la tienda seleccionada
+    // Calculado a partir de la planilla diaria y contratos de la tienda seleccionada
     const incomeRows = await dbAll(
       `SELECT contract_num FROM daily_income_entries WHERE (store_id = ? OR store_id IS NULL)`,
+      [storeId]
+    );
+    const contractRows = await dbAll(
+      `SELECT contract_code FROM contracts WHERE (store_id = ? OR store_id IS NULL)`,
       [storeId]
     );
 
@@ -1636,8 +1661,10 @@ exports.getNextContractNum = async (req, res) => {
     };
 
     incomeRows.forEach(r => processCode(r.contract_num));
+    contractRows.forEach(r => processCode(r.contract_code));
 
-    const nextNum = maxNum > 0 ? maxNum + 1 : 101;
+    // El número inicial de contratos en esta gestión inicia en 201
+    const nextNum = maxNum >= 201 ? maxNum + 1 : 201;
 
     return res.json({
       success: true,
