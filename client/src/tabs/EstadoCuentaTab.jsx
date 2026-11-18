@@ -403,13 +403,37 @@ export default function EstadoCuentaTab() {
       const sWidth = (cropBox.width / 100) * naturalW;
       const sHeight = (cropBox.height / 100) * naturalH;
 
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.round(sWidth);
-      canvas.height = Math.round(sHeight);
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, canvas.width, canvas.height);
+      let canvasW = Math.round(sWidth);
+      let canvasH = Math.round(sHeight);
+      const maxCropW = 900;
+      const maxCropH = 1400;
+      if (canvasW > maxCropW || canvasH > maxCropH) {
+        const ratio = Math.min(maxCropW / canvasW, maxCropH / canvasH);
+        canvasW = Math.round(canvasW * ratio);
+        canvasH = Math.round(canvasH * ratio);
+      }
 
-      const croppedDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+      const canvas = document.createElement('canvas');
+      canvas.width = canvasW;
+      canvas.height = canvasH;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, canvasW, canvasH);
+
+      // Comprimir con calidad adaptativa para asegurar que el Base64 no supere los 60 KB (61440 caracteres)
+      let q = 0.72;
+      let croppedDataUrl = canvas.toDataURL('image/jpeg', q);
+      while (croppedDataUrl.length > 60 * 1024 && q > 0.35) {
+        q -= 0.08;
+        croppedDataUrl = canvas.toDataURL('image/jpeg', q);
+      }
+      if (croppedDataUrl.length > 60 * 1024) {
+        const scCanvas = document.createElement('canvas');
+        scCanvas.width = Math.round(canvasW * 0.8);
+        scCanvas.height = Math.round(canvasH * 0.8);
+        const scCtx = scCanvas.getContext('2d');
+        scCtx.drawImage(canvas, 0, 0, scCanvas.width, scCanvas.height);
+        croppedDataUrl = scCanvas.toDataURL('image/jpeg', 0.55);
+      }
 
       const res = await apiFetch('/bank-reconciliation/replace-image', {
         method: 'POST',
@@ -798,27 +822,23 @@ export default function EstadoCuentaTab() {
     }
   };
 
-  // Helper para comprimir imágenes antes de subir (reduce de 5MB a ~200KB en base64)
-  const compressImageFile = (file) => {
+  // Helper para comprimir imágenes antes de subir (garantiza un peso máximo de ~45KB en binario y ~60KB en Base64 para Supabase)
+  const compressImageFile = (file, maxTargetKb = 45) => {
     return new Promise((resolve) => {
       if (!file || !file.type || !file.type.startsWith('image/')) return resolve(file);
       const img = new Image();
       const reader = new FileReader();
       reader.onload = (e) => {
         img.onload = () => {
-          const maxWidth = 1600;
-          const maxHeight = 1600;
+          const maxWidth = 900;
+          const maxHeight = 1400;
           let width = img.width;
           let height = img.height;
 
           if (width > maxWidth || height > maxHeight) {
-            if (width > height) {
-              height = Math.round((height * maxWidth) / width);
-              width = maxWidth;
-            } else {
-              width = Math.round((width * maxHeight) / height);
-              height = maxHeight;
-            }
+            const ratio = Math.min(maxWidth / width, maxHeight / height);
+            width = Math.round(width * ratio);
+            height = Math.round(height * ratio);
           }
 
           const canvas = document.createElement('canvas');
@@ -827,13 +847,29 @@ export default function EstadoCuentaTab() {
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0, width, height);
 
-          canvas.toBlob((blob) => {
-            if (blob) {
-              resolve(new File([blob], (file.name || 'captura').replace(/\.[^/.]+$/, "") + ".jpg", { type: 'image/jpeg' }));
-            } else {
-              resolve(file);
-            }
-          }, 'image/jpeg', 0.82);
+          let quality = 0.70;
+          const tryCompress = (q) => {
+            canvas.toBlob((blob) => {
+              if (!blob) return resolve(file);
+              // Si supera los 45KB (que equivale a ~60KB en Base64) y podemos reducir calidad
+              if (blob.size > maxTargetKb * 1024 && q > 0.35) {
+                tryCompress(Math.max(0.32, q - 0.08));
+              } else if (blob.size > maxTargetKb * 1024 && width > 600) {
+                // Reducir resolución si es necesario para garantizar <= 60KB
+                const scaleCanvas = document.createElement('canvas');
+                scaleCanvas.width = Math.round(width * 0.8);
+                scaleCanvas.height = Math.round(height * 0.8);
+                const sCtx = scaleCanvas.getContext('2d');
+                sCtx.drawImage(canvas, 0, 0, scaleCanvas.width, scaleCanvas.height);
+                scaleCanvas.toBlob((finalBlob) => {
+                  resolve(new File([finalBlob || blob], (file.name || 'captura').replace(/\.[^/.]+$/, "") + ".jpg", { type: 'image/jpeg' }));
+                }, 'image/jpeg', 0.55);
+              } else {
+                resolve(new File([blob], (file.name || 'captura').replace(/\.[^/.]+$/, "") + ".jpg", { type: 'image/jpeg' }));
+              }
+            }, 'image/jpeg', q);
+          };
+          tryCompress(quality);
         };
         img.onerror = () => resolve(file);
         img.src = e.target.result;

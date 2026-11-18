@@ -181,6 +181,7 @@ router.get('/bank-reconciliation/opening', authenticateToken, requireRole('admin
 router.post('/bank-reconciliation/opening', authenticateToken, requireRole('administrador'), bankReconciliationController.saveWeeklyOpening);
 router.get('/bank-reconciliation/download-zip', authenticateToken, requireRole('administrador'), bankReconciliationController.downloadWeekImagesZip);
 router.put('/bank-reconciliation/replace-image', authenticateToken, requireRole('administrador'), upload.single('voucher_image'), bankReconciliationController.replaceCaptureImage);
+router.post('/bank-reconciliation/replace-image', authenticateToken, requireRole('administrador'), upload.single('voucher_image'), bankReconciliationController.replaceCaptureImage);
 router.post('/bank-reconciliation/delete-capture', authenticateToken, requireRole('administrador'), bankReconciliationController.deleteCapture);
 router.post('/bank-reconciliation', authenticateToken, requireRole('administrador'), upload.single('voucher_image'), bankReconciliationController.createBankEntry);
 router.post('/bank-reconciliation/batch', authenticateToken, requireRole('administrador'), upload.array('voucher_images', 30), bankReconciliationController.createBatchBankEntries);
