@@ -375,6 +375,24 @@ async function initDatabase() {
         opening_balance REAL DEFAULT 0,
         notes TEXT,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );`,
+
+      `CREATE TABLE IF NOT EXISTS admin_retroactive_alerts (
+        id SERIAL PRIMARY KEY,
+        store_id INTEGER DEFAULT 1,
+        entry_type TEXT NOT NULL,
+        action_type TEXT NOT NULL,
+        sheet_date TEXT NOT NULL,
+        week_start TEXT NOT NULL,
+        contract_or_concept TEXT,
+        amount NUMERIC DEFAULT 0.0,
+        prev_amount NUMERIC,
+        details TEXT,
+        user_name TEXT,
+        is_resolved INTEGER DEFAULT 0,
+        resolved_at TIMESTAMP,
+        resolved_by TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );`
     ];
 
@@ -394,6 +412,7 @@ async function initDatabase() {
       `ALTER TABLE contracts ADD COLUMN IF NOT EXISTS store_id INTEGER DEFAULT 1;`,
       `ALTER TABLE bank_reconciliation ADD COLUMN IF NOT EXISTS store_id INTEGER DEFAULT 1;`,
       `ALTER TABLE users ADD COLUMN IF NOT EXISTS store_id INTEGER DEFAULT 1;`,
+      `ALTER TABLE admin_retroactive_alerts ADD COLUMN IF NOT EXISTS store_id INTEGER DEFAULT 1;`,
       `UPDATE bank_reconciliation SET status = 'VERIFICADO' WHERE status = 'ANULADO';`
     ];
 
@@ -424,6 +443,17 @@ async function initDatabase() {
           ['vendedora2', hashVendedora, 'vendedora', 'Vendedora Tienda 2', 2]
         );
         console.log('✅ Default users initialized for 2 stores (admin, vendedora1, vendedora2).');
+      } else {
+        // Asegurar que exista usuario vendedora2 para Tienda 2 si solo existían admin y vendedora1
+        const v2User = await dbGet(`SELECT id FROM users WHERE username = 'vendedora2' OR (role = 'vendedora' AND store_id = 2);`);
+        if (!v2User) {
+          const hashVendedora = await bcrypt.hash('vendedora123', 10);
+          await dbRun(
+            `INSERT INTO users (username, password_hash, role, full_name, store_id) VALUES (?, ?, ?, ?, ?)`,
+            ['vendedora2', hashVendedora, 'vendedora', 'Vendedora Tienda 2', 2]
+          );
+          console.log('✅ Created default user vendedora2 for Tienda 2.');
+        }
       }
     } catch (uErr) {
       console.warn('Seed users note:', uErr.message);
@@ -594,12 +624,33 @@ async function initDatabase() {
     );
   `);
 
+  await dbRun(`
+    CREATE TABLE IF NOT EXISTS admin_retroactive_alerts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      store_id INTEGER DEFAULT 1,
+      entry_type TEXT NOT NULL,
+      action_type TEXT NOT NULL,
+      sheet_date TEXT NOT NULL,
+      week_start TEXT NOT NULL,
+      contract_or_concept TEXT,
+      amount REAL DEFAULT 0.0,
+      prev_amount REAL,
+      details TEXT,
+      user_name TEXT,
+      is_resolved INTEGER DEFAULT 0,
+      resolved_at DATETIME,
+      resolved_by TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
   // Migraciones SQLite
   try { await dbRun(`ALTER TABLE daily_cash_sheets ADD COLUMN store_id INTEGER DEFAULT 1;`); } catch (_) {}
   try { await dbRun(`ALTER TABLE daily_income_entries ADD COLUMN store_id INTEGER DEFAULT 1;`); } catch (_) {}
   try { await dbRun(`ALTER TABLE daily_expense_entries ADD COLUMN store_id INTEGER DEFAULT 1;`); } catch (_) {}
   try { await dbRun(`ALTER TABLE contracts ADD COLUMN store_id INTEGER DEFAULT 1;`); } catch (_) {}
   try { await dbRun(`ALTER TABLE users ADD COLUMN store_id INTEGER DEFAULT 1;`); } catch (_) {}
+  try { await dbRun(`ALTER TABLE admin_retroactive_alerts ADD COLUMN store_id INTEGER DEFAULT 1;`); } catch (_) {}
 
   // Crear usuarios iniciales SQLite
   try {
@@ -619,6 +670,15 @@ async function initDatabase() {
         `INSERT INTO users (username, password_hash, role, full_name, store_id) VALUES (?, ?, ?, ?, ?)`,
         ['vendedora2', hashVendedora, 'vendedora', 'Vendedora Tienda 2', 2]
       );
+    } else {
+      const v2User = await dbGet(`SELECT id FROM users WHERE username = 'vendedora2' OR (role = 'vendedora' AND store_id = 2);`);
+      if (!v2User) {
+        const hashVendedora = await bcrypt.hash('vendedora123', 10);
+        await dbRun(
+          `INSERT INTO users (username, password_hash, role, full_name, store_id) VALUES (?, ?, ?, ?, ?)`,
+          ['vendedora2', hashVendedora, 'vendedora', 'Vendedora Tienda 2', 2]
+        );
+      }
     }
   } catch (_) {}
 }

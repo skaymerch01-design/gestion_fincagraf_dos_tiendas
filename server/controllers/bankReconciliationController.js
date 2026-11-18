@@ -188,19 +188,26 @@ exports.createBatchBankEntries = async (req, res) => {
 
 exports.replaceCaptureImage = async (req, res) => {
   try {
-    const { old_image_url } = req.body;
-    if (!req.file) {
-      return res.status(400).json({ success: false, error: 'No se recibió ninguna imagen.' });
+    const { old_image_url, new_image_url, image_base64 } = req.body;
+    let targetNewImage = new_image_url || null;
+
+    if (image_base64) {
+      targetNewImage = image_base64;
+    } else if (req.file) {
+      targetNewImage = getBase64OrUrlFromFile(req.file);
     }
-    const newImageUrl = getBase64OrUrlFromFile(req.file);
+
+    if (!targetNewImage) {
+      return res.status(400).json({ success: false, error: 'No se recibió ninguna imagen (archivo o base64).' });
+    }
 
     await dbRun(
       `UPDATE bank_reconciliation SET image_url = ? WHERE image_url = ?`,
-      [newImageUrl, old_image_url]
+      [targetNewImage, old_image_url]
     );
 
     exportSnapshot(dbAll).catch(err => console.error(err));
-    return res.json({ success: true, message: 'Captura actualizada exitosamente.', new_image_url: newImageUrl });
+    return res.json({ success: true, message: 'Captura actualizada exitosamente.', new_image_url: targetNewImage });
   } catch (err) {
     console.error('Error replacing capture image:', err);
     return res.status(500).json({ success: false, error: 'Error al reemplazar imagen de captura.' });

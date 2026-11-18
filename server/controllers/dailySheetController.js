@@ -30,6 +30,40 @@ function getWeekDates(mondayStr) {
   return dates;
 }
 
+async function recordRetroactiveAlert({ storeId = 1, entryType, actionType, sheetDate, contractOrConcept, amount, prevAmount, details, user }) {
+  try {
+    if (!sheetDate) return;
+    const todayStr = getTodayStr();
+    const currentMonday = getMondayForDate(todayStr);
+    // Dispara alerta si la fecha del registro pertenece a una semana anterior al lunes actual
+    if (sheetDate < currentMonday) {
+      const entryWeekStart = getMondayForDate(sheetDate);
+      const userName = (user && (user.full_name || user.username)) || 'Vendedora';
+      const parsedStoreId = parseInt(storeId || 1, 10);
+      await dbRun(
+        `INSERT INTO admin_retroactive_alerts 
+         (store_id, entry_type, action_type, sheet_date, week_start, contract_or_concept, amount, prev_amount, details, user_name)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          parsedStoreId,
+          entryType,
+          actionType,
+          sheetDate,
+          entryWeekStart,
+          contractOrConcept || null,
+          parseFloat(amount) || 0.0,
+          prevAmount !== undefined && prevAmount !== null ? parseFloat(prevAmount) : null,
+          details || null,
+          userName
+        ]
+      );
+      console.log(`🚨 Retroactive Alert Recorded [Tienda ${parsedStoreId}]: ${actionType} ${entryType} for date ${sheetDate} by ${userName}`);
+    }
+  } catch (err) {
+    console.warn('Could not record retroactive alert:', err.message);
+  }
+}
+
 async function calculateDayNetCash(dStr, storeId = 1) {
   const incomeRows = await dbAll(
     `SELECT amount_paid, payment_type, initial_payment, initial_payment_type, final_payment, final_payment_type, efectivo_paid, status FROM daily_income_entries WHERE date_str = ? AND (store_id = ? OR store_id IS NULL)`,
@@ -620,6 +654,18 @@ exports.addIncomeEntry = async (req, res) => {
 
     // Los registros de planilla diaria se quedan únicamente en la planilla diaria (Punto 1)
 
+    // Auditoría de edición retroactiva
+    await recordRetroactiveAlert({
+      storeId: storeIdVal,
+      entryType: 'INGRESO',
+      actionType: 'CREAR',
+      sheetDate: dateVal,
+      contractOrConcept: contractCode,
+      amount: numPaid,
+      details: details.trim(),
+      user: req.user
+    });
+
     await syncWeekCashSheets(dateVal, storeIdVal);
     await exportSnapshot(dbAll);
     return res.status(201).json({ success: true, message: 'Ingreso agregado a la planilla.' });
@@ -712,6 +758,19 @@ exports.updateIncomeEntry = async (req, res) => {
       );
     }
 
+    // Auditoría de edición retroactiva
+    await recordRetroactiveAlert({
+      storeId: prevEntry.store_id || 1,
+      entryType: 'INGRESO',
+      actionType: 'MODIFICAR',
+      sheetDate: targetDate || prevEntry.date_str,
+      contractOrConcept: contractCode,
+      amount: numPaid,
+      prevAmount: prevEntry.amount_paid,
+      details: `Modificado de S/ ${prevEntry.amount_paid} a S/ ${numPaid}. Detalle: ${(details || prevEntry.details || '').trim()}`,
+      user: req.user
+    });
+
 
     if (prevEntry.date_str) {
       await syncWeekCashSheets(prevEntry.date_str);
@@ -739,6 +798,19 @@ exports.toggleAnularIncomeEntry = async (req, res) => {
     const newStatus = entry.status === 'ANULADO' ? 'ACTIVO' : 'ANULADO';
 
     await dbRun(`UPDATE daily_income_entries SET status = ? WHERE id = ?`, [newStatus, id]);
+
+    // Auditoría de edición retroactiva
+    await recordRetroactiveAlert({
+      storeId: entry.store_id || 1,
+      entryType: 'INGRESO',
+      actionType: newStatus === 'ANULADO' ? 'ANULAR' : 'REACTIVAR',
+      sheetDate: entry.date_str,
+      contractOrConcept: entry.contract_num,
+      amount: entry.amount_paid,
+      details: `Estado cambiado a ${newStatus}. Detalle: ${entry.details || ''}`,
+      user: req.user
+    });
+
     await syncWeekCashSheets(entry.date_str);
     await exportSnapshot(dbAll);
 
@@ -919,6 +991,19 @@ exports.deleteIncomeEntry = async (req, res) => {
     }
 
     await dbRun(`DELETE FROM daily_income_entries WHERE id = ?`, [id]);
+
+    // Auditoría de edición retroactiva
+    await recordRetroactiveAlert({
+      storeId: entry.store_id || 1,
+      entryType: 'INGRESO',
+      actionType: 'ELIMINAR',
+      sheetDate: entry.date_str,
+      contractOrConcept: entry.contract_num,
+      amount: entry.amount_paid,
+      details: `Ingreso eliminado: S/ ${entry.amount_paid} (${entry.details || ''})`,
+      user: req.user
+    });
+
     await syncWeekCashSheets(entry.date_str);
     await exportSnapshot(dbAll);
     return res.json({ success: true, message: 'Registro eliminado de la planilla.' });
@@ -1025,6 +1110,18 @@ exports.addExpenseEntry = async (req, res) => {
       );
     }
 
+    // Auditoría de edición retroactiva
+    await recordRetroactiveAlert({
+      storeId: storeIdVal,
+      entryType: 'EGRESO',
+      actionType: 'CREAR',
+      sheetDate: dateVal,
+      contractOrConcept: expCategory,
+      amount: numAmount,
+      details: details.trim(),
+      user: req.user
+    });
+
     await syncWeekCashSheets(dateVal, storeIdVal);
     await exportSnapshot(dbAll);
     return res.status(201).json({ success: true, message: 'Egreso agregado a la planilla.' });
@@ -1051,6 +1148,19 @@ exports.updateExpenseEntry = async (req, res) => {
       `UPDATE daily_expense_entries SET date_str = ?, expense_type = ?, details = ?, amount = ?, payment_type = ? WHERE id = ?`,
       [targetDate, expense_type || prevExp.expense_type || 'General', (details !== undefined ? details : prevExp.details || '').trim(), numAmount, payment_type || prevExp.payment_type, id]
     );
+
+    // Auditoría de edición retroactiva
+    await recordRetroactiveAlert({
+      storeId: prevExp.store_id || 1,
+      entryType: 'EGRESO',
+      actionType: 'MODIFICAR',
+      sheetDate: targetDate || prevExp.date_str,
+      contractOrConcept: expense_type || prevExp.expense_type,
+      amount: numAmount,
+      prevAmount: prevExp.amount,
+      details: `Modificado de S/ ${prevExp.amount} a S/ ${numAmount}. Detalle: ${(details || prevExp.details || '').trim()}`,
+      user: req.user
+    });
 
     if (prevExp.date_str) {
       await syncWeekCashSheets(prevExp.date_str);
@@ -1122,6 +1232,19 @@ exports.deleteExpenseEntry = async (req, res) => {
     }
 
     await dbRun(`DELETE FROM daily_expense_entries WHERE id = ?`, [id]);
+
+    // Auditoría de edición retroactiva
+    await recordRetroactiveAlert({
+      storeId: existing.store_id || 1,
+      entryType: 'EGRESO',
+      actionType: 'ELIMINAR',
+      sheetDate: existing.date_str,
+      contractOrConcept: existing.expense_type,
+      amount: existing.amount,
+      details: `Egreso eliminado: S/ ${existing.amount} (${existing.details || ''})`,
+      user: req.user
+    });
+
     await syncWeekCashSheets(existing.date_str);
 
     try {
@@ -1715,6 +1838,72 @@ exports.auditExpenseEntry = async (req, res) => {
   } catch (err) {
     console.error('Error auditing expense entry:', err);
     return res.status(500).json({ success: false, error: 'Error al actualizar auditoría.' });
+  }
+};
+
+exports.getRetroactiveAlerts = async (req, res) => {
+  try {
+    const { store_id, include_resolved } = req.query;
+    let sql = `SELECT * FROM admin_retroactive_alerts`;
+    const conditions = [];
+    const params = [];
+
+    if (store_id && store_id !== 'all') {
+      conditions.push(`(store_id = ? OR store_id IS NULL)`);
+      params.push(parseInt(store_id, 10));
+    }
+
+    if (include_resolved !== 'true') {
+      conditions.push(`is_resolved = 0`);
+    }
+
+    if (conditions.length > 0) {
+      sql += ` WHERE ` + conditions.join(' AND ');
+    }
+
+    sql += ` ORDER BY created_at DESC LIMIT 100`;
+    const alerts = await dbAll(sql, params);
+    return res.json({ success: true, alerts });
+  } catch (err) {
+    console.error('Error fetching retroactive alerts:', err);
+    return res.status(500).json({ success: false, error: 'Error al obtener alertas retroactivas.' });
+  }
+};
+
+exports.resolveRetroactiveAlert = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const adminName = (req.user && (req.user.full_name || req.user.username)) || 'Administrador';
+    await dbRun(
+      `UPDATE admin_retroactive_alerts SET is_resolved = 1, resolved_at = CURRENT_TIMESTAMP, resolved_by = ? WHERE id = ?`,
+      [adminName, id]
+    );
+    return res.json({ success: true, message: 'Alerta marcada como revisada.' });
+  } catch (err) {
+    console.error('Error resolving retroactive alert:', err);
+    return res.status(500).json({ success: false, error: 'Error al resolver alerta.' });
+  }
+};
+
+exports.resolveAllRetroactiveAlerts = async (req, res) => {
+  try {
+    const { store_id } = req.body;
+    const adminName = (req.user && (req.user.full_name || req.user.username)) || 'Administrador';
+    if (store_id && store_id !== 'all') {
+      await dbRun(
+        `UPDATE admin_retroactive_alerts SET is_resolved = 1, resolved_at = CURRENT_TIMESTAMP, resolved_by = ? WHERE is_resolved = 0 AND (store_id = ? OR store_id IS NULL)`,
+        [adminName, parseInt(store_id, 10)]
+      );
+    } else {
+      await dbRun(
+        `UPDATE admin_retroactive_alerts SET is_resolved = 1, resolved_at = CURRENT_TIMESTAMP, resolved_by = ? WHERE is_resolved = 0`,
+        [adminName]
+      );
+    }
+    return res.json({ success: true, message: 'Todas las alertas fueron marcadas como revisadas.' });
+  } catch (err) {
+    console.error('Error resolving all retroactive alerts:', err);
+    return res.status(500).json({ success: false, error: 'Error al resolver todas las alertas.' });
   }
 };
 

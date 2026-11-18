@@ -126,6 +126,9 @@ router.post('/daily-sheet/expense', authenticateToken, dailySheetController.addE
 router.put('/daily-sheet/expense/:id', authenticateToken, dailySheetController.updateExpenseEntry);
 router.put('/daily-sheet/expense/:id/audit', authenticateToken, requireRole('administrador'), dailySheetController.auditExpenseEntry);
 router.delete('/daily-sheet/expense/:id', authenticateToken, dailySheetController.deleteExpenseEntry);
+router.get('/daily-sheet/retroactive-alerts', authenticateToken, requireRole('administrador'), dailySheetController.getRetroactiveAlerts);
+router.put('/daily-sheet/retroactive-alerts/resolve-all', authenticateToken, requireRole('administrador'), dailySheetController.resolveAllRetroactiveAlerts);
+router.put('/daily-sheet/retroactive-alerts/:id/resolve', authenticateToken, requireRole('administrador'), dailySheetController.resolveRetroactiveAlert);
 
 // --- CONTRACTS ROUTES ---
 router.post('/contracts', authenticateToken, contractsController.createContract);

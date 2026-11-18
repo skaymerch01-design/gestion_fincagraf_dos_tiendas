@@ -37,7 +37,8 @@ import {
   Bell,
   Send,
   Check,
-  Ban
+  Ban,
+  Scissors
 } from 'lucide-react';
 
 // ─── Utilidades de Formato de Fecha ──────────────────────────────────────────
@@ -291,6 +292,144 @@ export default function EstadoCuentaTab() {
     setZoom(1);
     setRotation(0);
     setPanPosition({ x: 0, y: 0 });
+  };
+
+  // ─── ESTADOS Y HANDLERS PARA RECORTE DE IMAGEN (CROP TOOL) ───────────────────
+  const [isCropping, setIsCropping] = useState(false);
+  const [cropBox, setCropBox] = useState({ x: 10, y: 10, width: 80, height: 80 }); // Porcentajes (0 - 100%)
+  const [isDraggingCrop, setIsDraggingCrop] = useState(false);
+  const [cropDragMode, setCropDragMode] = useState('move'); // 'move', 'nw', 'ne', 'sw', 'se'
+  const [cropStartPos, setCropStartPos] = useState({ x: 0, y: 0, box: null });
+  const [savingCrop, setSavingCrop] = useState(false);
+  const cropContainerRef = useRef(null);
+
+  const handleStartCrop = () => {
+    setIsCropping(true);
+    setCropBox({ x: 15, y: 15, width: 70, height: 70 });
+  };
+
+  const handleCancelCrop = () => {
+    setIsCropping(false);
+  };
+
+  const handleCropBoxMouseDown = (e, mode = 'move') => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingCrop(true);
+    setCropDragMode(mode);
+    setCropStartPos({
+      x: e.clientX,
+      y: e.clientY,
+      box: { ...cropBox }
+    });
+  };
+
+  useEffect(() => {
+    if (!isDraggingCrop) return;
+
+    const handleWindowMouseMove = (e) => {
+      const container = cropContainerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+
+      const deltaXPercent = ((e.clientX - cropStartPos.x) / rect.width) * 100;
+      const deltaYPercent = ((e.clientY - cropStartPos.y) / rect.height) * 100;
+      const initial = cropStartPos.box;
+
+      if (cropDragMode === 'move') {
+        let newX = Math.max(0, Math.min(100 - initial.width, initial.x + deltaXPercent));
+        let newY = Math.max(0, Math.min(100 - initial.height, initial.y + deltaYPercent));
+        setCropBox(prev => ({ ...prev, x: newX, y: newY }));
+      } else if (cropDragMode === 'se') {
+        let newW = Math.max(10, Math.min(100 - initial.x, initial.width + deltaXPercent));
+        let newH = Math.max(10, Math.min(100 - initial.y, initial.height + deltaYPercent));
+        setCropBox(prev => ({ ...prev, width: newW, height: newH }));
+      } else if (cropDragMode === 'sw') {
+        let rightEdge = initial.x + initial.width;
+        let candidateX = Math.max(0, Math.min(rightEdge - 10, initial.x + deltaXPercent));
+        let newW = rightEdge - candidateX;
+        let newH = Math.max(10, Math.min(100 - initial.y, initial.height + deltaYPercent));
+        setCropBox(prev => ({ ...prev, x: candidateX, width: newW, height: newH }));
+      } else if (cropDragMode === 'ne') {
+        let bottomEdge = initial.y + initial.height;
+        let candidateY = Math.max(0, Math.min(bottomEdge - 10, initial.y + deltaYPercent));
+        let newH = bottomEdge - candidateY;
+        let newW = Math.max(10, Math.min(100 - initial.x, initial.width + deltaXPercent));
+        setCropBox(prev => ({ ...prev, y: candidateY, height: newH, width: newW }));
+      } else if (cropDragMode === 'nw') {
+        let rightEdge = initial.x + initial.width;
+        let bottomEdge = initial.y + initial.height;
+        let candidateX = Math.max(0, Math.min(rightEdge - 10, initial.x + deltaXPercent));
+        let candidateY = Math.max(0, Math.min(bottomEdge - 10, initial.y + deltaYPercent));
+        setCropBox({
+          x: candidateX,
+          y: candidateY,
+          width: rightEdge - candidateX,
+          height: bottomEdge - candidateY
+        });
+      }
+    };
+
+    const handleWindowMouseUp = () => {
+      setIsDraggingCrop(false);
+    };
+
+    window.addEventListener('mousemove', handleWindowMouseMove);
+    window.addEventListener('mouseup', handleWindowMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleWindowMouseMove);
+      window.removeEventListener('mouseup', handleWindowMouseUp);
+    };
+  }, [isDraggingCrop, cropDragMode, cropStartPos]);
+
+  const handleApplyCrop = async () => {
+    if (!currentImgUrl) return;
+    setSavingCrop(true);
+    try {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.src = currentImgUrl;
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = () => reject(new Error('No se pudo cargar la imagen para recortar.'));
+      });
+
+      const naturalW = img.naturalWidth || img.width;
+      const naturalH = img.naturalHeight || img.height;
+
+      const sx = (cropBox.x / 100) * naturalW;
+      const sy = (cropBox.y / 100) * naturalH;
+      const sWidth = (cropBox.width / 100) * naturalW;
+      const sHeight = (cropBox.height / 100) * naturalH;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(sWidth);
+      canvas.height = Math.round(sHeight);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, canvas.width, canvas.height);
+
+      const croppedDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+
+      const res = await apiFetch('/bank-reconciliation/replace-image', {
+        method: 'POST',
+        body: {
+          old_image_url: currentImgUrl,
+          image_base64: croppedDataUrl
+        }
+      });
+
+      if (res && res.success) {
+        setIsCropping(false);
+        await fetchEntries();
+      } else {
+        alert('Error al guardar imagen recortada: ' + (res?.error || 'Error desconocido'));
+      }
+    } catch (err) {
+      alert('Error durante el recorte: ' + err.message);
+    } finally {
+      setSavingCrop(false);
+    }
   };
 
   // Helper para distinguir colores según el Tipo de Pago
@@ -2552,83 +2691,205 @@ export default function EstadoCuentaTab() {
               })}
             </div>
 
-            {/* Split View GIGANTE: Izquierda 0.85fr (Captura Celular) / Derecha 1.35fr (Formulario y Tabla Amplia) */}
-            <div style={{ display: 'grid', gridTemplateColumns: '0.85fr 1.35fr', gap: '1.25rem', flex: 1, overflowY: 'auto' }}>
+            {/* Split View: Izquierda 0.9fr (Captura con Recorte y Zoom) / Derecha 1.3fr (Formulario Compacto y Movimientos Grandes) */}
+            <div style={{ display: 'grid', gridTemplateColumns: '0.9fr 1.3fr', gap: '1.25rem', flex: 1, overflowY: 'auto', minHeight: 0 }}>
               
-              {/* LADO IZQUIERDO: VISUALIZADOR GIGANTE DE CAPTURA CON MANITO Y RUEDA DE MOUSE */}
+              {/* LADO IZQUIERDO: VISUALIZADOR DE CAPTURA + HERRAMIENTA DE RECORTE */}
               <div style={{
                 backgroundColor: '#070a13',
                 borderRadius: '14px',
-                border: '2px solid #0284c7',
+                border: isCropping ? '2.5px solid #38bdf8' : '2px solid #0284c7',
                 padding: '0.75rem',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
                 position: 'relative',
                 height: '100%',
-                minHeight: '500px',
+                minHeight: '520px',
                 overflow: 'hidden'
               }}>
-                {/* Controles de Zoom, Rotación y Panning */}
-                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.65rem', zIndex: 10, flexWrap: 'wrap', width: '100%', justifyContent: 'center' }}>
-                  <button type="button" onClick={() => setZoom(prev => Math.min(prev + 0.3, 4.0))} className="btn btn-secondary btn-sm"><ZoomIn size={14} /> Zoom +</button>
-                  <button type="button" onClick={() => setZoom(prev => Math.max(prev - 0.3, 0.4))} className="btn btn-secondary btn-sm">Zoom -</button>
-                  <button type="button" onClick={resetImageTransform} className="btn btn-secondary btn-sm">Reiniciar Vista (100%)</button>
-                  <button type="button" onClick={() => setRotation(prev => (prev + 90) % 360)} className="btn btn-secondary btn-sm"><RotateCw size={14} /> Rotar 90°</button>
-                  <button type="button" onClick={() => setViewImage(currentImgUrl)} className="btn btn-primary btn-sm"><Eye size={14} /> Pantalla Completa</button>
-                  <span style={{ fontSize: '0.78rem', color: '#38bdf8', display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontWeight: '800', marginLeft: 'auto' }}>
-                    <Move size={14} /> 🖱️ Usa la Rueda del Mouse para Zoom | ✋ Arrastra para Mover
-                  </span>
-                </div>
+                {/* Controles: Modo Recorte vs Modo Normal */}
+                {isCropping ? (
+                  <div style={{ display: 'flex', gap: '0.6rem', marginBottom: '0.65rem', zIndex: 10, flexWrap: 'wrap', width: '100%', alignItems: 'center', backgroundColor: '#0c4a6e', padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #38bdf8' }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: '900', color: '#f0f9ff', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <Scissors size={16} color="#38bdf8" /> MODO RECORTE: Arrastra el recuadro o las esquinas
+                    </span>
+                    <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem' }}>
+                      <button
+                        type="button"
+                        onClick={handleApplyCrop}
+                        disabled={savingCrop}
+                        className="btn btn-success btn-sm"
+                        style={{ fontWeight: '900', padding: '0.35rem 0.85rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.82rem' }}
+                      >
+                        {savingCrop ? '⏳ Guardando...' : '✔️ Aplicar Recorte'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCancelCrop}
+                        disabled={savingCrop}
+                        className="btn btn-secondary btn-sm"
+                        style={{ fontWeight: '800', padding: '0.35rem 0.75rem', fontSize: '0.82rem' }}
+                      >
+                        ✕ Cancelar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: '0.45rem', marginBottom: '0.65rem', zIndex: 10, flexWrap: 'wrap', width: '100%', alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      onClick={handleStartCrop}
+                      className="btn btn-sm"
+                      style={{ backgroundColor: '#0284c7', color: '#ffffff', fontWeight: '900', border: '1.5px solid #38bdf8', display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.35rem 0.75rem', boxShadow: '0 0 10px rgba(56,189,248,0.3)' }}
+                      title="Recortar voucher o parte específica de la imagen"
+                    >
+                      <Scissors size={15} /> ✂️ Recortar Imagen
+                    </button>
+                    <button type="button" onClick={() => setZoom(prev => Math.min(prev + 0.3, 4.0))} className="btn btn-secondary btn-sm"><ZoomIn size={14} /> Zoom +</button>
+                    <button type="button" onClick={() => setZoom(prev => Math.max(prev - 0.3, 0.4))} className="btn btn-secondary btn-sm">Zoom -</button>
+                    <button type="button" onClick={resetImageTransform} className="btn btn-secondary btn-sm">Reiniciar (100%)</button>
+                    <button type="button" onClick={() => setRotation(prev => (prev + 90) % 360)} className="btn btn-secondary btn-sm"><RotateCw size={14} /> Rotar</button>
+                    <button type="button" onClick={() => setViewImage(currentImgUrl)} className="btn btn-primary btn-sm"><Eye size={14} /> Completa</button>
+                    <span style={{ fontSize: '0.75rem', color: '#38bdf8', display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontWeight: '800', marginLeft: 'auto' }}>
+                      <Move size={13} /> 🖱️ Rueda Zoom | ✋ Arrastra
+                    </span>
+                  </div>
+                )}
 
-                {/* Área de Visualización con Zoom por Rueda de Mouse + Drag */}
-                <div
-                  ref={fillImageContainerRef}
-                  onMouseDown={handleMouseDown}
-                  onMouseMove={handleMouseMove}
-                  onMouseUp={handleMouseUp}
-                  onMouseLeave={handleMouseUp}
-                  style={{
-                    flex: 1,
-                    width: '100%',
-                    height: '100%',
-                    overflow: 'hidden',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: '#020617',
-                    borderRadius: '10px',
-                    padding: '0.5rem',
-                    cursor: isDragging ? 'grabbing' : 'grab',
-                    userSelect: 'none',
-                    position: 'relative'
-                  }}
-                >
-                  <img
-                    src={currentImgUrl}
-                    alt={`Captura #${currentImageIndex + 1}`}
-                    draggable={false}
+                {/* Área de Visualización */}
+                {isCropping ? (
+                  <div
                     style={{
-                      maxHeight: '74vh',
-                      maxWidth: '100%',
-                      width: 'auto',
-                      objectFit: 'contain',
-                      transform: `translate(${panPosition.x}px, ${panPosition.y}px) scale(${zoom}) rotate(${rotation}deg)`,
-                      transition: isDragging ? 'none' : 'transform 0.15s ease',
-                      borderRadius: '8px',
-                      pointerEvents: 'none'
+                      flex: 1,
+                      width: '100%',
+                      height: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: '#020617',
+                      borderRadius: '10px',
+                      padding: '0.5rem',
+                      overflow: 'hidden',
+                      position: 'relative'
                     }}
-                  />
-                </div>
+                  >
+                    <div
+                      ref={cropContainerRef}
+                      style={{
+                        position: 'relative',
+                        display: 'inline-block',
+                        maxWidth: '100%',
+                        maxHeight: '74vh',
+                        userSelect: 'none'
+                      }}
+                    >
+                      <img
+                        src={currentImgUrl}
+                        alt="Recortar voucher"
+                        draggable={false}
+                        style={{
+                          maxHeight: '74vh',
+                          maxWidth: '100%',
+                          width: 'auto',
+                          display: 'block',
+                          objectFit: 'contain',
+                          borderRadius: '6px'
+                        }}
+                      />
+                      {/* Recuadro de Recorte Interactivo (Crop Box) */}
+                      <div
+                        onMouseDown={(e) => handleCropBoxMouseDown(e, 'move')}
+                        style={{
+                          position: 'absolute',
+                          left: `${cropBox.x}%`,
+                          top: `${cropBox.y}%`,
+                          width: `${cropBox.width}%`,
+                          height: `${cropBox.height}%`,
+                          border: '2.5px dashed #38bdf8',
+                          boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.65)',
+                          cursor: 'move',
+                          boxSizing: 'border-box',
+                          zIndex: 20
+                        }}
+                      >
+                        <div style={{ position: 'absolute', top: '4px', left: '6px', backgroundColor: '#0284c7', color: '#ffffff', fontSize: '0.7rem', fontWeight: '900', padding: '2px 6px', borderRadius: '4px', pointerEvents: 'none' }}>
+                          ✂️ Área de Recorte
+                        </div>
+                        {/* Handles de redimensión */}
+                        {/* Top-Left */}
+                        <div
+                          onMouseDown={(e) => handleCropBoxMouseDown(e, 'nw')}
+                          style={{ position: 'absolute', left: '-7px', top: '-7px', width: '14px', height: '14px', backgroundColor: '#38bdf8', border: '2px solid #ffffff', borderRadius: '50%', cursor: 'nwse-resize' }}
+                        />
+                        {/* Top-Right */}
+                        <div
+                          onMouseDown={(e) => handleCropBoxMouseDown(e, 'ne')}
+                          style={{ position: 'absolute', right: '-7px', top: '-7px', width: '14px', height: '14px', backgroundColor: '#38bdf8', border: '2px solid #ffffff', borderRadius: '50%', cursor: 'nesw-resize' }}
+                        />
+                        {/* Bottom-Left */}
+                        <div
+                          onMouseDown={(e) => handleCropBoxMouseDown(e, 'sw')}
+                          style={{ position: 'absolute', left: '-7px', bottom: '-7px', width: '14px', height: '14px', backgroundColor: '#38bdf8', border: '2px solid #ffffff', borderRadius: '50%', cursor: 'nesw-resize' }}
+                        />
+                        {/* Bottom-Right */}
+                        <div
+                          onMouseDown={(e) => handleCropBoxMouseDown(e, 'se')}
+                          style={{ position: 'absolute', right: '-7px', bottom: '-7px', width: '14px', height: '14px', backgroundColor: '#38bdf8', border: '2px solid #ffffff', borderRadius: '50%', cursor: 'nwse-resize' }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    ref={fillImageContainerRef}
+                    onMouseDown={handleMouseDown}
+                    onMouseMove={handleMouseMove}
+                    onMouseUp={handleMouseUp}
+                    onMouseLeave={handleMouseUp}
+                    style={{
+                      flex: 1,
+                      width: '100%',
+                      height: '100%',
+                      overflow: 'hidden',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: '#020617',
+                      borderRadius: '10px',
+                      padding: '0.5rem',
+                      cursor: isDragging ? 'grabbing' : 'grab',
+                      userSelect: 'none',
+                      position: 'relative'
+                    }}
+                  >
+                    <img
+                      src={currentImgUrl}
+                      alt={`Captura #${currentImageIndex + 1}`}
+                      draggable={false}
+                      style={{
+                        maxHeight: '74vh',
+                        maxWidth: '100%',
+                        width: 'auto',
+                        objectFit: 'contain',
+                        transform: `translate(${panPosition.x}px, ${panPosition.y}px) scale(${zoom}) rotate(${rotation}deg)`,
+                        transition: isDragging ? 'none' : 'transform 0.15s ease',
+                        borderRadius: '8px',
+                        pointerEvents: 'none'
+                      }}
+                    />
+                  </div>
+                )}
               </div>
 
-              {/* LADO DERECHO: AGREGAR MOVIMIENTO Y TABLA DE MOVIMIENTOS DE ESTA CAPTURA */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', overflowY: 'auto' }}>
+              {/* LADO DERECHO: FORMULARIO COMPACTO (ARRIBA) + MOVIMIENTOS REGISTRADOS GIGANTES (ABAJO) */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', overflowY: 'auto', height: '100%' }}>
                 
-                <form onSubmit={handleAddMovementToImage} style={{ backgroundColor: '#1e293b', padding: '1.15rem', borderRadius: '14px', border: '1.5px solid #334155', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1.5px solid #334155', paddingBottom: '0.5rem' }}>
-                    <span style={{ fontSize: '1.05rem', fontWeight: '900', color: '#38bdf8' }}>
-                      {editingFillId ? '✏️ Modificar Movimiento' : '➕ Ingresar Movimiento'} de esta Imagen (Captura #{currentImageIndex + 1})
+                {/* 1. FORMULARIO COMPACTO */}
+                <form onSubmit={handleAddMovementToImage} style={{ backgroundColor: '#1e293b', padding: '0.85rem 1rem', borderRadius: '12px', border: '1.5px solid #334155', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #334155', paddingBottom: '0.4rem' }}>
+                    <span style={{ fontSize: '0.95rem', fontWeight: '900', color: '#38bdf8' }}>
+                      {editingFillId ? '✏️ Modificar Movimiento' : '➕ Ingresar Movimiento'} (Captura #{currentImageIndex + 1})
                     </span>
                     {editingFillId && (
                       <button
@@ -2640,33 +2901,32 @@ export default function EstadoCuentaTab() {
                           setTimeout(() => amountInputRef.current?.focus(), 100);
                         }}
                         className="btn btn-secondary btn-sm"
-                        style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem', color: '#34d399' }}
+                        style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem', color: '#34d399' }}
                       >
-                        ➕ Agregar Nuevo
+                        ➕ Nuevo
                       </button>
                     )}
                   </div>
 
-                  {/* Fecha de Abono / Ingreso */}
-                  <div className="form-group">
-                    <label className="form-label" style={{ fontWeight: '900', color: '#38bdf8', fontSize: '0.88rem' }}>📅 Fecha Abono / Ingreso:</label>
-                    <input
-                      type="date"
-                      className="form-input"
-                      style={{ fontSize: '0.95rem', padding: '0.6rem', fontWeight: '900', backgroundColor: '#0f172a', color: '#38bdf8', borderColor: '#0284c7' }}
-                      value={formatDateInput(transactionDate)}
-                      onChange={(e) => setTransactionDate(e.target.value)}
-                      required
-                    />
-                  </div>
+                  {/* Fila 1: Fecha (1fr) + Tipo Pago (1.1fr) + Movimiento (1.3fr) */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.15fr 1.25fr', gap: '0.65rem', alignItems: 'flex-end' }}>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label" style={{ fontWeight: '800', color: '#38bdf8', fontSize: '0.78rem', marginBottom: '0.25rem' }}>📅 Fecha:</label>
+                      <input
+                        type="date"
+                        className="form-input"
+                        style={{ fontSize: '0.85rem', padding: '0.45rem', fontWeight: '800', backgroundColor: '#0f172a', color: '#38bdf8', borderColor: '#0284c7' }}
+                        value={formatDateInput(transactionDate)}
+                        onChange={(e) => setTransactionDate(e.target.value)}
+                        required
+                      />
+                    </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.85rem' }}>
-                    {/* 1. Tipo de Pago */}
-                    <div className="form-group">
-                      <label className="form-label" style={{ fontWeight: '800', color: '#ffffff', fontSize: '0.88rem' }}>1. Tipo Pago:</label>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label" style={{ fontWeight: '800', color: '#ffffff', fontSize: '0.78rem', marginBottom: '0.25rem' }}>Tipo Pago:</label>
                       <select
                         className="form-select"
-                        style={{ fontSize: '1rem', padding: '0.65rem', fontWeight: '800', backgroundColor: '#0f172a' }}
+                        style={{ fontSize: '0.85rem', padding: '0.45rem', fontWeight: '800', backgroundColor: '#0f172a' }}
                         value={paymentType}
                         onChange={(e) => {
                           const val = e.target.value;
@@ -2679,31 +2939,28 @@ export default function EstadoCuentaTab() {
                         <option value="TRANSFERENCIA">🏦 TRANSFERENCIA</option>
                         <option value="YAPE">📱 YAPE / PLIN</option>
                         <option value="POS">💳 POS / TARJETA</option>
-                        <option value="RETIRO EN EFECTIVO">💵 RETIRO EN EFECTIVO</option>
+                        <option value="RETIRO EN EFECTIVO">💵 RETIRO EFECTIVO</option>
                       </select>
                     </div>
 
-                    {/* 2. Movimiento — Selectivo Manual (INGRESO o EGRESO) */}
-                    <div className="form-group">
-                      <label className="form-label" style={{ fontWeight: '800', color: '#ffffff', fontSize: '0.88rem' }}>2. Movimiento:</label>
-                      <div style={{ display: 'flex', gap: '0.5rem', height: '44px' }}>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label" style={{ fontWeight: '800', color: '#ffffff', fontSize: '0.78rem', marginBottom: '0.25rem' }}>Movimiento:</label>
+                      <div style={{ display: 'flex', gap: '0.35rem', height: '36px' }}>
                         <button
                           type="button"
                           onClick={() => setTransactionType('INGRESO')}
                           style={{
                             flex: 1,
-                            borderRadius: '8px',
+                            borderRadius: '6px',
                             fontWeight: '900',
-                            fontSize: '0.85rem',
+                            fontSize: '0.78rem',
                             cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
                             backgroundColor: transactionType === 'INGRESO' ? '#10b981' : '#0f172a',
                             color: transactionType === 'INGRESO' ? '#ffffff' : '#94a3b8',
-                            border: transactionType === 'INGRESO' ? '2px solid #34d399' : '1.5px solid #1e293b',
-                            boxShadow: transactionType === 'INGRESO' ? '0 0 10px rgba(16,185,129,0.4)' : 'none',
-                            transition: 'all 0.15s ease'
+                            border: transactionType === 'INGRESO' ? '2px solid #34d399' : '1px solid #1e293b'
                           }}
                         >
                           🟢 INGRESO
@@ -2713,18 +2970,16 @@ export default function EstadoCuentaTab() {
                           onClick={() => setTransactionType('EGRESO')}
                           style={{
                             flex: 1,
-                            borderRadius: '8px',
+                            borderRadius: '6px',
                             fontWeight: '900',
-                            fontSize: '0.85rem',
+                            fontSize: '0.78rem',
                             cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
                             backgroundColor: transactionType === 'EGRESO' ? '#ef4444' : '#0f172a',
                             color: transactionType === 'EGRESO' ? '#ffffff' : '#94a3b8',
-                            border: transactionType === 'EGRESO' ? '2px solid #f87171' : '1.5px solid #1e293b',
-                            boxShadow: transactionType === 'EGRESO' ? '0 0 10px rgba(239,68,68,0.4)' : 'none',
-                            transition: 'all 0.15s ease'
+                            border: transactionType === 'EGRESO' ? '2px solid #f87171' : '1px solid #1e293b'
                           }}
                         >
                           🔴 EGRESO
@@ -2733,137 +2988,166 @@ export default function EstadoCuentaTab() {
                     </div>
                   </div>
 
-                  {/* 3. Monto S/ y 4. Concepto */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: '0.85rem' }}>
-                    <div className="form-group">
-                      <label className="form-label" style={{ fontWeight: '900', color: '#38bdf8', fontSize: '0.88rem' }}>3. Monto (S/):</label>
+                  {/* Fila 2: Monto (1fr) + Concepto (1.5fr) */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '0.65rem', alignItems: 'flex-start' }}>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                        <label className="form-label" style={{ fontWeight: '900', color: '#38bdf8', fontSize: '0.78rem', margin: 0 }}>Monto (S/):</label>
+                        {amount && !isNaN(parseFloat(amount)) && parseFloat(amount) > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowSheetDrawer(true);
+                              setDrawerMinimized(false);
+                              setDrawerSearch(amount.trim());
+                              const targetDate = formatDateInput(transactionDate) || formatDateInput(startDate);
+                              if (targetDate && targetDate !== drawerDateStr) {
+                                fetchDrawerSheet(targetDate);
+                              }
+                            }}
+                            style={{
+                              fontSize: '0.7rem',
+                              fontWeight: '800',
+                              color: '#38bdf8',
+                              background: 'rgba(2, 132, 199, 0.25)',
+                              border: '1px solid #0284c7',
+                              borderRadius: '4px',
+                              padding: '0.1rem 0.35rem',
+                              cursor: 'pointer'
+                            }}
+                            title="Comparar con planilla de la vendedora"
+                          >
+                            🔍 Planilla
+                          </button>
+                        )}
+                      </div>
                       <input
                         ref={amountInputRef}
                         type="number"
                         step="0.01"
                         className="form-input"
-                        style={{ fontSize: '1.35rem', fontWeight: '900', color: '#22c55e', padding: '0.65rem', backgroundColor: '#0f172a' }}
+                        style={{ fontSize: '1.15rem', fontWeight: '900', color: '#22c55e', padding: '0.45rem', backgroundColor: '#0f172a' }}
                         value={amount}
                         onChange={(e) => setAmount(e.target.value)}
                         placeholder="Ej: 15.00"
                         required
                       />
-                      {amount && !isNaN(parseFloat(amount)) && parseFloat(amount) > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowSheetDrawer(true);
-                            setDrawerMinimized(false);
-                            setDrawerSearch(amount.trim());
-                            const targetDate = formatDateInput(transactionDate) || formatDateInput(startDate);
-                            if (targetDate && targetDate !== drawerDateStr) {
-                              fetchDrawerSheet(targetDate);
-                            }
-                          }}
-                          style={{
-                            fontSize: '0.75rem',
-                            fontWeight: '800',
-                            color: '#38bdf8',
-                            background: 'rgba(2, 132, 199, 0.25)',
-                            border: '1px solid #0284c7',
-                            borderRadius: '6px',
-                            padding: '0.25rem 0.5rem',
-                            cursor: 'pointer',
-                            marginTop: '0.35rem',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '0.3rem',
-                            width: 'fit-content'
-                          }}
-                          title="Buscar este monto en la planilla de la vendedora"
-                        >
-                          <Search size={12} /> Comparar S/ {amount} en Planilla
-                        </button>
-                      )}
                     </div>
 
-                    <div className="form-group">
-                      <label className="form-label" style={{ fontWeight: '800', color: '#ffffff', fontSize: '0.88rem' }}>4. Concepto / Nombre:</label>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label" style={{ fontWeight: '800', color: '#ffffff', fontSize: '0.78rem', marginBottom: '0.25rem' }}>Concepto / Nombre:</label>
                       <input
                         type="text"
                         className="form-input"
-                        style={{ fontSize: '1rem', padding: '0.65rem', backgroundColor: '#0f172a' }}
+                        style={{ fontSize: '0.9rem', padding: '0.5rem', backgroundColor: '#0f172a' }}
                         value={conceptNote}
                         onChange={(e) => setConceptNote(e.target.value)}
-                        placeholder="Ej: Yape Roy Pac"
+                        placeholder="Ej: Yape Juan Pérez / Depósito Roy"
                       />
                     </div>
                   </div>
 
-                  {/* Checkbox Avisar a Vendedora */}
-                  <div style={{ margin: '0.4rem 0 0.85rem 0', display: 'flex', alignItems: 'center', gap: '0.55rem', backgroundColor: 'rgba(234, 179, 8, 0.12)', border: '1.5px dashed #eab308', padding: '0.5rem 0.75rem', borderRadius: '8px' }}>
-                    <input
-                      type="checkbox"
-                      id="notifyVendedoraCheck"
-                      checked={notifyOnSave}
-                      onChange={(e) => setNotifyOnSave(e.target.checked)}
-                      style={{ width: '17px', height: '17px', accentColor: '#eab308', cursor: 'pointer' }}
-                    />
-                    <label htmlFor="notifyVendedoraCheck" style={{ fontSize: '0.82rem', fontWeight: '800', color: '#fef08a', cursor: 'pointer', margin: 0, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <Pin size={14} color="#eab308" />
-                      <span>Avisar de inmediato a la vendedora en su Stick de Notas (para llenar en Planilla Diaria)</span>
+                  {/* Fila 3: Checkbox Avisar + Botón Guardar */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', marginTop: '0.15rem' }}>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', fontSize: '0.75rem', fontWeight: '700', color: '#fef08a', margin: 0 }}>
+                      <input
+                        type="checkbox"
+                        checked={notifyOnSave}
+                        onChange={(e) => setNotifyOnSave(e.target.checked)}
+                        style={{ width: '15px', height: '15px', accentColor: '#eab308', cursor: 'pointer' }}
+                      />
+                      <Pin size={13} color="#eab308" /> Avisar a vendedora en Stick de Notas
                     </label>
-                  </div>
 
-                  {/* Botón Agregar / Actualizar Movimiento */}
-                  <button
-                    type="submit"
-                    className="btn btn-primary"
-                    style={{ fontWeight: '900', padding: '0.75rem', fontSize: '1.05rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', boxShadow: '0 4px 14px rgba(2, 132, 199, 0.4)' }}
-                  >
-                    <Plus size={20} /> {editingFillId ? '💾 Actualizar Movimiento' : '➕ Guardar Movimiento'}
-                  </button>
+                    <button
+                      type="submit"
+                      className="btn btn-primary"
+                      style={{ fontWeight: '900', padding: '0.55rem 1.25rem', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.4rem', boxShadow: '0 3px 12px rgba(2, 132, 199, 0.4)' }}
+                    >
+                      <Plus size={18} /> {editingFillId ? '💾 Actualizar' : '➕ Guardar Movimiento'}
+                    </button>
+                  </div>
                 </form>
 
-                {/* MINI TABLA DE MOVIMIENTOS REGISTRADOS PARA ESTA CAPTURA */}
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: '#0f172a', borderRadius: '14px', border: '1.5px solid #1e293b', padding: '0.85rem', overflow: 'hidden', minHeight: '180px' }}>
-                  <div style={{ fontSize: '0.9rem', fontWeight: '900', color: '#10b981', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span>📋 Movimientos Registrados en Captura #{currentImageIndex + 1} ({currentImageEntries.length})</span>
+                {/* 2. SECCIÓN DESTACADA Y GIGANTE: MOVIMIENTOS REGISTRADOS EN ESTA CAPTURA */}
+                <div style={{
+                  flex: 1,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  backgroundColor: '#0f172a',
+                  borderRadius: '12px',
+                  border: '2px solid #0284c7',
+                  padding: '0.85rem',
+                  overflow: 'hidden',
+                  minHeight: '340px',
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.35)'
+                }}>
+                  {/* Cabecera Destacada con Totales y Conteo */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem', flexWrap: 'wrap', gap: '0.5rem', borderBottom: '1.5px solid #1e293b', paddingBottom: '0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontSize: '1rem', fontWeight: '900', color: '#38bdf8' }}>
+                        📋 MOVIMIENTOS REGISTRADOS EN CAPTURA #{currentImageIndex + 1}
+                      </span>
+                      <span style={{ backgroundColor: '#0284c7', color: '#ffffff', fontSize: '0.75rem', fontWeight: '900', padding: '0.15rem 0.5rem', borderRadius: '12px' }}>
+                        {currentImageEntries.length} {currentImageEntries.length === 1 ? 'movimiento' : 'movimientos'}
+                      </span>
+                    </div>
+
+                    {/* Chips de Totales */}
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <span style={{ backgroundColor: 'rgba(16, 185, 129, 0.18)', border: '1px solid #10b981', color: '#34d399', fontSize: '0.78rem', fontWeight: '900', padding: '0.2rem 0.6rem', borderRadius: '6px' }}>
+                        🟢 Ingresos: {formatSoles(currentImageEntries.filter(m => m.transaction_type === 'INGRESO').reduce((acc, m) => acc + (parseFloat(m.amount) || 0), 0))}
+                      </span>
+                      <span style={{ backgroundColor: 'rgba(239, 68, 68, 0.18)', border: '1px solid #ef4444', color: '#f87171', fontSize: '0.78rem', fontWeight: '900', padding: '0.2rem 0.6rem', borderRadius: '6px' }}>
+                        🔴 Egresos: {formatSoles(currentImageEntries.filter(m => m.transaction_type === 'EGRESO').reduce((acc, m) => acc + (parseFloat(m.amount) || 0), 0))}
+                      </span>
+                    </div>
                   </div>
 
+                  {/* Tabla Amplia de Movimientos con Scroll y Sticky Header */}
                   <div style={{ flex: 1, overflowY: 'auto' }}>
                     {currentImageEntries.length === 0 ? (
-                      <p style={{ color: '#64748b', fontSize: '0.85rem', textAlign: 'center', marginTop: '2rem', fontStyle: 'italic' }}>
-                        Aún no se han agregado movimientos para esta imagen. Completa el formulario de arriba para ingresar el primero.
-                      </p>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '160px', color: '#64748b', textAlign: 'center' }}>
+                        <p style={{ fontSize: '0.92rem', fontWeight: '700', marginBottom: '0.25rem' }}>
+                          Sin movimientos registrados para esta captura
+                        </p>
+                        <p style={{ fontSize: '0.8rem', color: '#475569' }}>
+                          Completa el formulario superior y presiona "➕ Guardar Movimiento" para ingresar el primero.
+                        </p>
+                      </div>
                     ) : (
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-                        <thead>
-                          <tr style={{ backgroundColor: '#1e293b', color: '#94a3b8', borderBottom: '1px solid #334155' }}>
-                            <th style={{ padding: '0.4rem 0.5rem', textAlign: 'left' }}>FECHA</th>
-                            <th style={{ padding: '0.4rem 0.5rem', textAlign: 'left' }}>TIPO</th>
-                            <th style={{ padding: '0.4rem 0.5rem', textAlign: 'center' }}>MOV.</th>
-                            <th style={{ padding: '0.4rem 0.5rem', textAlign: 'right' }}>MONTO</th>
-                            <th style={{ padding: '0.4rem 0.5rem', textAlign: 'left' }}>CONCEPTO</th>
-                            <th style={{ padding: '0.4rem 0.5rem', textAlign: 'center' }}>ACCION</th>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.86rem' }}>
+                        <thead style={{ position: 'sticky', top: 0, zIndex: 5 }}>
+                          <tr style={{ backgroundColor: '#1e293b', color: '#94a3b8', borderBottom: '2px solid #334155' }}>
+                            <th style={{ padding: '0.55rem 0.6rem', textAlign: 'left', fontWeight: '800' }}>FECHA</th>
+                            <th style={{ padding: '0.55rem 0.6rem', textAlign: 'left', fontWeight: '800' }}>TIPO</th>
+                            <th style={{ padding: '0.55rem 0.6rem', textAlign: 'center', fontWeight: '800' }}>MOV.</th>
+                            <th style={{ padding: '0.55rem 0.6rem', textAlign: 'right', fontWeight: '800' }}>MONTO</th>
+                            <th style={{ padding: '0.55rem 0.6rem', textAlign: 'left', fontWeight: '800' }}>CONCEPTO / NOTA</th>
+                            <th style={{ padding: '0.55rem 0.6rem', textAlign: 'center', fontWeight: '800' }}>ACCIONES</th>
                           </tr>
                         </thead>
                         <tbody>
                           {currentImageEntries.map((m) => {
                             const badgeStyle = getPaymentTypeBadgeStyle(m.bank_name);
                             return (
-                              <tr key={m.id} style={{ borderBottom: '1px solid #1e293b' }}>
-                                <td style={{ padding: '0.4rem 0.5rem', color: '#38bdf8', fontWeight: '800', whiteSpace: 'nowrap' }}>
+                              <tr key={m.id} style={{ borderBottom: '1px solid #1e293b', backgroundColor: editingFillId === m.id ? 'rgba(56, 189, 248, 0.12)' : 'transparent' }}>
+                                <td style={{ padding: '0.55rem 0.6rem', color: '#38bdf8', fontWeight: '800', whiteSpace: 'nowrap' }}>
                                   📅 {formatDateDisplay(m.date)}
                                 </td>
-                                <td style={{ padding: '0.4rem 0.5rem' }}>
-                                  <span className="badge" style={{ ...badgeStyle, fontSize: '0.72rem', padding: '0.2rem 0.45rem' }}>{m.bank_name}</span>
+                                <td style={{ padding: '0.55rem 0.6rem' }}>
+                                  <span className="badge" style={{ ...badgeStyle, fontSize: '0.74rem', padding: '0.2rem 0.5rem', fontWeight: '800' }}>{m.bank_name}</span>
                                 </td>
-                                <td style={{ padding: '0.4rem 0.5rem', textAlign: 'center' }}>
-                                  <span style={{ color: m.transaction_type === 'INGRESO' ? '#34d399' : '#f87171', fontWeight: '900' }}>
-                                    {m.transaction_type}
+                                <td style={{ padding: '0.55rem 0.6rem', textAlign: 'center' }}>
+                                  <span style={{ color: m.transaction_type === 'INGRESO' ? '#34d399' : '#f87171', fontWeight: '900', fontSize: '0.8rem' }}>
+                                    {m.transaction_type === 'INGRESO' ? '🟢 INGRESO' : '🔴 EGRESO'}
                                   </span>
                                 </td>
-                                <td style={{ padding: '0.4rem 0.5rem', textAlign: 'right', fontWeight: '900', color: '#ffffff' }}>
+                                <td style={{ padding: '0.55rem 0.6rem', textAlign: 'right', fontWeight: '900', color: '#ffffff', fontSize: '0.98rem' }}>
                                   {formatSoles(m.amount)}
                                 </td>
-                                <td style={{ padding: '0.4rem 0.5rem', color: '#cbd5e1' }}>{m.notes || '—'}</td>
-                                <td style={{ padding: '0.4rem 0.5rem', textAlign: 'center' }}>
+                                <td style={{ padding: '0.55rem 0.6rem', color: '#cbd5e1', fontSize: '0.84rem' }}>{m.notes || '—'}</td>
+                                <td style={{ padding: '0.55rem 0.6rem', textAlign: 'center', whiteSpace: 'nowrap' }}>
                                   <button
                                     type="button"
                                     onClick={() => openNotifyVendedoraModal(m)}
@@ -2871,11 +3155,11 @@ export default function EstadoCuentaTab() {
                                       backgroundColor: m.status === 'OBSERVADO' ? '#d97706' : 'rgba(234, 179, 8, 0.2)',
                                       color: m.status === 'OBSERVADO' ? '#ffffff' : '#facc15',
                                       border: '1px solid #eab308',
-                                      borderRadius: '4px',
-                                      padding: '0.2rem 0.45rem',
-                                      fontSize: '0.72rem',
+                                      borderRadius: '5px',
+                                      padding: '0.25rem 0.55rem',
+                                      fontSize: '0.74rem',
                                       fontWeight: '800',
-                                      marginRight: '0.3rem',
+                                      marginRight: '0.35rem',
                                       cursor: 'pointer'
                                     }}
                                     title="Avisar a la vendedora en Stick de Notas para llenar en Planilla Diaria"
@@ -2894,19 +3178,19 @@ export default function EstadoCuentaTab() {
                                       setTimeout(() => amountInputRef.current?.focus(), 100);
                                     }}
                                     className="btn btn-secondary btn-sm"
-                                    style={{ padding: '0.2rem 0.4rem', fontSize: '0.72rem', marginRight: '0.3rem' }}
+                                    style={{ padding: '0.25rem 0.5rem', fontSize: '0.74rem', marginRight: '0.35rem' }}
                                     title="Editar este movimiento"
                                   >
-                                    <Edit3 size={12} color="#38bdf8" />
+                                    <Edit3 size={13} color="#38bdf8" />
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() => handleDeleteItem(m.id)}
                                     className="btn btn-danger btn-sm"
-                                    style={{ padding: '0.2rem 0.4rem', fontSize: '0.72rem' }}
-                                    title="Eliminar"
+                                    style={{ padding: '0.25rem 0.5rem', fontSize: '0.74rem' }}
+                                    title="Eliminar este movimiento"
                                   >
-                                    <Trash2 size={12} />
+                                    <Trash2 size={13} />
                                   </button>
                                 </td>
                               </tr>

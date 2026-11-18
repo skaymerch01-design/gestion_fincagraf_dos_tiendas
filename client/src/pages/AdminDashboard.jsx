@@ -33,6 +33,7 @@ import SunatTab from '../tabs/SunatTab';
 import PrestamosPersonalesTab from '../tabs/PrestamosPersonalesTab';
 import PinkCalculator from '../components/PinkCalculator';
 import PendingObservationsBanner from '../components/PendingObservationsBanner';
+import RetroactiveAlertsBanner from '../components/RetroactiveAlertsBanner';
 import { generateExecutivePDF, checkReportUnlockStatus } from '../utils/pdfGenerator';
 
 const MONTH_NAMES = [
@@ -660,6 +661,9 @@ export default function AdminDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Alerta de Auditoría de Planilla de Semanas Pasadas */}
+      <RetroactiveAlertsBanner storeId={selectedStoreId} />
 
       {/* Banner de Observaciones Pendientes y Descargos para el Administrador */}
       <PendingObservationsBanner isAdmin={true} />
