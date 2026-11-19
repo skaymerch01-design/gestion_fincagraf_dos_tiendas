@@ -383,17 +383,25 @@ export default function EstadoCuentaTab() {
     };
   }, [isDraggingCrop, cropDragMode, cropStartPos]);
 
-  const handleApplyCrop = async () => {
-    if (!currentImgUrl) return;
+  const handleApplyCrop = async (targetImgUrl) => {
+    const effectiveImgUrl = (typeof targetImgUrl === 'string' && targetImgUrl) ? targetImgUrl : currentImgUrl;
+    if (!effectiveImgUrl) return;
     setSavingCrop(true);
     try {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.src = currentImgUrl;
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = () => reject(new Error('No se pudo cargar la imagen para recortar.'));
-      });
+      let img = cropContainerRef.current ? cropContainerRef.current.querySelector('img') : null;
+      if (!img || !img.complete || !img.naturalWidth) {
+        img = new Image();
+        if (effectiveImgUrl && !effectiveImgUrl.startsWith('data:')) {
+          img.crossOrigin = 'anonymous';
+        }
+        img.src = effectiveImgUrl;
+        if (!img.complete || !img.naturalWidth) {
+          await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = () => reject(new Error('No se pudo cargar la imagen para procesar el recorte.'));
+          });
+        }
+      }
 
       const naturalW = img.naturalWidth || img.width;
       const naturalH = img.naturalHeight || img.height;
@@ -438,7 +446,7 @@ export default function EstadoCuentaTab() {
       const res = await apiFetch('/bank-reconciliation/replace-image', {
         method: 'POST',
         body: {
-          old_image_url: currentImgUrl,
+          old_image_url: effectiveImgUrl,
           image_base64: croppedDataUrl
         }
       });
@@ -2753,7 +2761,7 @@ export default function EstadoCuentaTab() {
                     <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem' }}>
                       <button
                         type="button"
-                        onClick={handleApplyCrop}
+                        onClick={() => handleApplyCrop(currentImgUrl)}
                         disabled={savingCrop}
                         className="btn btn-success btn-sm"
                         style={{ fontWeight: '900', padding: '0.35rem 0.85rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.82rem' }}
