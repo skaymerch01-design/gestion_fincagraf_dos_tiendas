@@ -3430,13 +3430,47 @@ export default function EstadoCuentaTab() {
           padding: '1rem'
         }}>
           <div className="card" style={{ width: '100%', maxWidth: editingItem.image_url ? '960px' : '500px', backgroundColor: '#0f172a', border: '3px solid #38bdf8', borderRadius: '16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.5rem' }}>
               <h3 style={{ fontSize: '1.15rem', color: '#38bdf8', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: '900' }}>
                 <Edit3 size={20} /> Editar Movimiento Bancario
               </h3>
-              <button type="button" onClick={() => setEditingItem(null)} className="btn-close-neon" title="Cerrar">
-                <X size={18} />
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSheetDrawer(true);
+                    setDrawerMinimized(false);
+                    if (amount && !isNaN(parseFloat(amount))) {
+                      setDrawerSearch(amount.trim());
+                    }
+                    const targetDate = formatDateInput(transactionDate) || formatDateInput(startDate);
+                    if (targetDate && targetDate !== drawerDateStr) {
+                      fetchDrawerSheet(targetDate);
+                    }
+                  }}
+                  className="btn btn-sm"
+                  style={{
+                    backgroundColor: 'rgba(2, 132, 199, 0.25)',
+                    border: '1.5px solid #0284c7',
+                    color: '#38bdf8',
+                    fontWeight: '800',
+                    fontSize: '0.8rem',
+                    padding: '0.35rem 0.75rem',
+                    borderRadius: '8px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    cursor: 'pointer',
+                    boxShadow: '0 0 10px rgba(56, 189, 248, 0.25)'
+                  }}
+                  title="Abrir comparador en vivo con la planilla diaria de la vendedora"
+                >
+                  <FileSpreadsheet size={15} color="#38bdf8" /> 📑 Planilla Diaria (En Vivo)
+                </button>
+                <button type="button" onClick={() => setEditingItem(null)} className="btn-close-neon" title="Cerrar">
+                  <X size={18} />
+                </button>
+              </div>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: editingItem.image_url ? '1fr 1fr' : '1fr', gap: '1.25rem' }}>
@@ -3528,7 +3562,40 @@ export default function EstadoCuentaTab() {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">Monto (S/):</label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                    <label className="form-label" style={{ fontWeight: '800', color: '#38bdf8', margin: 0 }}>Monto (S/):</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowSheetDrawer(true);
+                        setDrawerMinimized(false);
+                        if (amount && !isNaN(parseFloat(amount))) {
+                          setDrawerSearch(amount.trim());
+                        }
+                        const targetDate = formatDateInput(transactionDate) || formatDateInput(startDate);
+                        if (targetDate && targetDate !== drawerDateStr) {
+                          fetchDrawerSheet(targetDate);
+                        }
+                      }}
+                      style={{
+                        fontSize: '0.72rem',
+                        fontWeight: '800',
+                        color: '#38bdf8',
+                        background: 'rgba(2, 132, 199, 0.25)',
+                        border: '1px solid #0284c7',
+                        borderRadius: '6px',
+                        padding: '0.15rem 0.55rem',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        boxShadow: '0 0 8px rgba(56,189,248,0.2)'
+                      }}
+                      title="Comparar y verificar con la planilla diaria en tiempo real"
+                    >
+                      <FileSpreadsheet size={13} color="#38bdf8" /> 🔍 Planilla
+                    </button>
+                  </div>
                   <input type="number" step="0.01" className="form-input" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Ej: 15.00" required />
                 </div>
 
