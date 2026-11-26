@@ -396,24 +396,10 @@ export default function PlanillaIngresosEgresos({ readOnly = false, storeId = 1 
     }
   };
 
-  // Correlative Contract & Lookup State (Requerimiento 3 y Nueva Lógica de Cancelación)
-  const [nextContractNum, setNextContractNum] = useState(null);
-  const [highestContractNum, setHighestContractNum] = useState(0);
   const [lookupInfo, setLookupInfo] = useState(null);
 
   const fetchNextContractNum = async () => {
-    try {
-      const res = await apiFetch(`/daily-sheet/next-contract-num?storeId=${storeId}`);
-      if (res.success) {
-        setNextContractNum(res.next_contract_num);
-        setHighestContractNum(res.highest_contract_num);
-        if (incEntryType === 'CONTRATO' && !incCont) {
-          setIncCont(String(res.next_contract_num));
-        }
-      }
-    } catch (err) {
-      console.error('Error fetching next contract number:', err);
-    }
+    // Contratos de libre llenado en Dos Tiendas (sin autollenado correlativo)
   };
 
   const handleContractNumberChange = async (val) => {
@@ -597,17 +583,8 @@ export default function PlanillaIngresosEgresos({ readOnly = false, storeId = 1 
     let finalContractCode = incCont ? incCont.trim() : '';
 
     if (incEntryType === 'CONTRATO') {
-      if (!finalContractCode && nextContractNum) {
-        finalContractCode = String(nextContractNum);
-      }
-      if (/^\d+$/.test(finalContractCode) && nextContractNum && !lookupInfo?.exists) {
-        const numVal = parseInt(finalContractCode, 10);
-        if (numVal < 201) {
-          return alert(`⚠️ El correlativo inicial de contratos para esta gestión inicia en el N° 201.`);
-        }
-        if (numVal > nextContractNum) {
-          return alert(`⚠️ El número de contrato debe ser correlativo sin saltarse números. El siguiente contrato correlativo es el N° ${nextContractNum}.`);
-        }
+      if (!finalContractCode) {
+        return alert('⚠️ Por favor ingrese el número de contrato obligatoriamente.');
       }
     } else if (incEntryType === 'PRESTAMO') {
       finalContractCode = 'PRESTAMO';
@@ -1933,7 +1910,7 @@ export default function PlanillaIngresosEgresos({ readOnly = false, storeId = 1 
                                           setIncVendedor(sellersList[0]);
                                         }
                                         if (incCont === 'PRESTAMO' || incCont === 'CAMBIO' || incCont === 'OTROS' || incCont === 'OTRO') {
-                                          setIncCont(nextContractNum || '');
+                                          setIncCont('');
                                         }
                                       }
                                     }}
